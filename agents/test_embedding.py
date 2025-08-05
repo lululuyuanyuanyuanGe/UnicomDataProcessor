@@ -14,6 +14,7 @@ texts = [
     "耕地地力保护补贴",]
 
 embeddings = invoke_embedding_model(model_name="Qwen/Qwen3-Embedding-8B", texts=texts)
+print("返回的数据类型：", type(embeddings))
 for i, embedding in enumerate(embeddings):
     print(f"Text {i+1}: {texts[i]}")
     print(f"Embedding: {embedding}")
