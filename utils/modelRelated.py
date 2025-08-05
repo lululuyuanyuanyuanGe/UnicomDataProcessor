@@ -6,7 +6,7 @@ import time
 import random
 from pathlib import Path
 import base64
-from openai import RateLimitError, APIError
+from openai import RateLimitError
 import requests
 
 from utils.screen_shot import ExcelTableScreenshot
@@ -399,4 +399,63 @@ def invoke_model_with_screenshot(model_name : str, file_path : str, temperature:
     return response
     
     
+
+def invoke_embedding_model(model_name: str, texts: List[str], silent_mode: bool = False) -> List[List[float]]:
+    """调用嵌入模型 with automatic rate limit retry"""
+    if not silent_mode:
+        print(f"🚀 开始调用嵌入模型: {model_name}")
     
+    def _make_embedding_call():
+        start_time = time.time()
+        
+        if not silent_mode:
+            print("🔍 使用 SiliconFlow 原生嵌入API")
+        
+        # SiliconFlow native API
+        api_key = os.getenv("SILICONFLOW_API_KEY")
+        url = "https://api.siliconflow.cn/v1/embeddings"
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Prepare payload
+        payload = {
+            "model": model_name,  # Use exact model name
+            "input": texts,
+            "encoding_format": "float"
+        }
+        
+        # Make API call
+        response = requests.post(url, headers=headers, json=payload, timeout=200)
+        
+        # Check for errors
+        if response.status_code != 200:
+            error_text = response.text
+            print(f"❌ API Error {response.status_code}: {error_text}")
+            raise Exception(f"SiliconFlow API Error {response.status_code}: {error_text}")
+        
+        # Parse response
+        result = response.json()
+        embeddings = [item["embedding"] for item in result["data"]]
+        
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        if not silent_mode:
+            print(f"\n⏱️ 嵌入模型调用完成，耗时: {execution_time:.2f}秒")
+            if "usage" in result:
+                print(f"📊 Token使用: 总计={result['usage'].get('total_tokens', 'N/A'):,}")
+            print(f"🔢 嵌入维度: {len(embeddings[0])}")
+            print(f"📋 处理文本数量: {len(embeddings)}")
+        
+        return embeddings
+    
+    # Use your existing rate limit retry wrapper
+    try:
+        return _handle_rate_limit_with_backoff(_make_embedding_call, silent_mode=silent_mode)
+    except Exception as e:
+        if not silent_mode:
+            print(f"\n❌ 嵌入模型调用最终失败，错误: {e}")
+        raise
