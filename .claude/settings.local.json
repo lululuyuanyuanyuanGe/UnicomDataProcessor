@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(chcp 65001)"
+    ],
+    "deny": []
+  }
+}

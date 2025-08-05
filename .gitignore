@@ -1,2 +1,4 @@
 .env
 .venv
+sql_queries.txt
+data.txt

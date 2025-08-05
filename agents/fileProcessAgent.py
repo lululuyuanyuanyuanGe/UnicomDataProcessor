@@ -44,32 +44,6 @@ class FileProcessState(TypedDict):
 
 class FileProcessAgent:
 
-    @tool
-    def request_user_clarification(question: str, context: str = "") -> str:
-        """
-        询问用户澄清，和用户确认，或者询问用户补充信息，当你不确定的时候请询问用户
-
-        参数：
-            question: 问题
-            context: 可选补充内容，解释为甚恶魔你需要一下信息
-        """
-        print("\n" + "="*60)
-        print("🤔 需要您的确认")
-        print("="*60)
-        print(f"📋 {question}")
-        if context:
-            print(f"💡 {context}")
-        print("="*60)
-        
-        user_response = input("👤 请输入您的选择: ").strip()
-        
-        print(f"✅ 您的选择: {user_response}")
-        print("="*60 + "\n")
-        
-        return user_response
-    
-    tools = [request_user_clarification]
-
 
     def __init__(self):
         self.memory = MemorySaver()
