@@ -47,7 +47,7 @@ class TableSimilarityCalculator:
                 print(f"Embeddings file not found: {self.embeddings_path}")
                 return False
             
-            print(f"Loading existing embeddings from: {self.embeddings_path}")
+            print(f"正在加载表格嵌入: {self.embeddings_path}")
             
             with open(self.embeddings_path, 'rb') as f:
                 data = pickle.load(f)
@@ -64,13 +64,13 @@ class TableSimilarityCalculator:
             self.table_descriptions = data['table_descriptions']
             self.table_info = data['table_info']
             
-            print(f"Successfully loaded {len(self.embeddings)} table embeddings")
-            print(f"Embedding dimension: {self.embeddings.shape[1] if len(self.embeddings.shape) > 1 else 'N/A'}")
+            print(f"成功加载 {len(self.embeddings)} 个表格嵌入向量")
+            print(f"嵌入向量维度: {self.embeddings.shape[1] if len(self.embeddings.shape) > 1 else '不可用'}")
             
             return True
             
         except Exception as e:
-            print(f"Error loading embeddings: {e}")
+            print(f"加载嵌入向量时出错: {e}")
             return False
     
     def calculate_cosine_similarity(self, vector1: np.ndarray, vector2: np.ndarray) -> float:
@@ -91,7 +91,7 @@ class TableSimilarityCalculator:
             
             # Check dimension compatibility
             if v1.shape != v2.shape:
-                print(f"Dimension mismatch: {v1.shape} vs {v2.shape}")
+                print(f"向量维度不匹配: {v1.shape} vs {v2.shape}")
                 return 0.0
             
             # Handle zero vectors
@@ -111,7 +111,7 @@ class TableSimilarityCalculator:
             return percentage
             
         except Exception as e:
-            print(f"Error calculating cosine similarity: {e}")
+            print(f"计算余弦相似度时出错: {e}")
             return 0.0
     
     def find_similar_tables(self, new_embedding: List[float], top_n: int = 3) -> List[Dict[str, Any]]:
@@ -126,7 +126,7 @@ class TableSimilarityCalculator:
             List of dictionaries with similarity results including percentages
         """
         if self.embeddings is None or len(self.embeddings) == 0:
-            print("No existing embeddings loaded")
+            print("没有加载已存在的嵌入向量")
             return []
         
         try:
@@ -138,8 +138,8 @@ class TableSimilarityCalculator:
                 similarity_percentage = self.calculate_cosine_similarity(new_vector, existing_embedding)
                 
                 # Get table information
-                table_name = self.table_names[i] if i < len(self.table_names) else f"Table_{i}"
-                table_description = self.table_descriptions[i] if i < len(self.table_descriptions) else "No description"
+                table_name = self.table_names[i] if i < len(self.table_names) else f"表格_{i}"
+                table_description = self.table_descriptions[i] if i < len(self.table_descriptions) else "无描述"
                 
                 similarities.append({
                     'index': i,
@@ -154,7 +154,7 @@ class TableSimilarityCalculator:
             return similarities[:top_n]
             
         except Exception as e:
-            print(f"Error finding similar tables: {e}")
+            print(f"查找相似表格时出错: {e}")
             return []
     
     def format_similarity_results(self, similarity_results: List[Dict[str, Any]]) -> str:
@@ -168,27 +168,36 @@ class TableSimilarityCalculator:
             str: Formatted results string
         """
         if not similarity_results:
-            return "No similar tables found."
+            return "未找到相似的表格。"
         
         formatted_output = "\n" + "="*80 + "\n"
-        formatted_output += "TOP SIMILAR TABLES FOUND\n"
+        formatted_output += "最相似的表格结果\n"
         formatted_output += "="*80 + "\n"
         
         for i, result in enumerate(similarity_results, 1):
-            formatted_output += f"\n#{i} - Similarity: {result['similarity_formatted']}\n"
-            formatted_output += f"Table: {result['table_name']}\n"
+            formatted_output += f"\n#{i} - 相似度: {result['similarity_formatted']}\n"
+            
+            # Clean table name - remove "数据表：" prefix if present
+            table_name = result['table_name']
+            formatted_output += f"表格名称: {table_name}\n"
             
             # Extract headers from description for preview
             description = result['description']
-            if 'headers:' in description.lower():
-                headers_part = description.split(':')[1] if ':' in description else description
+            
+            # Remove "数据表：" prefix from description if present
+            clean_description = description
+            if clean_description.startswith("数据表： "):
+                clean_description = clean_description[4:].strip()  # Remove "数据表： "
+            
+            if '包含表头：' in clean_description:
+                headers_part = clean_description.split('包含表头：')[1] if '包含表头：' in clean_description else clean_description
                 headers = [h.strip() for h in headers_part.split(',')]
                 headers_preview = ', '.join(headers[:5])  # Show first 5 headers
                 if len(headers) > 5:
-                    headers_preview += f"... (+{len(headers)-5} more)"
-                formatted_output += f"Headers: {headers_preview}\n"
-            
-            formatted_output += f"Description: {description}\n"
+                    headers_preview += f"... (另外还有{len(headers)-5}个)"
+                formatted_output += f"表头: {headers_preview}\n"
+            else:
+                formatted_output += f"描述: {clean_description}\n"
             formatted_output += "-" * 40 + "\n"
         
         return formatted_output
@@ -205,34 +214,28 @@ class TableSimilarityCalculator:
         """
         try:
             try:
-                print(f"Generating embedding for: {description}")
+                print(f"正在为以下内容生成嵌入向量: {description}")
             except UnicodeEncodeError:
-                print("Generating embedding for: [Contains Chinese characters]")
+                print("正在生成嵌入向量: [包含中文字符]")
             
             # Use the same embedding model as existing tables
-            # Suppress all output to avoid Unicode encoding issues
-            import sys
-            import os
-            from contextlib import redirect_stdout, redirect_stderr
-            
-            with redirect_stdout(open(os.devnull, 'w')), redirect_stderr(open(os.devnull, 'w')):
-                embeddings = invoke_embedding_model(
-                    model_name=self.embedding_model, 
-                    texts=[description],  # Pass as list for batch processing
-                    silent_mode=True  # Use silent mode to avoid Unicode console issues
-                )
+            embeddings = invoke_embedding_model(
+                model_name=self.embedding_model, 
+                texts=[description],  # Pass as list for batch processing
+                silent_mode=True  # Use silent mode to avoid Unicode console issues
+            )
             
             if embeddings and len(embeddings) > 0:
                 return embeddings[0]  # Return first (and only) embedding
             else:
-                print("No embeddings returned from model")
+                print("模型未返回嵌入向量")
                 return None
                 
         except Exception as e:
             try:
-                print(f"Error generating embedding: {e}")
+                print(f"生成嵌入向量时出错: {e}")
             except UnicodeEncodeError:
-                print("Error generating embedding: [Unicode encoding issue]")
+                print("生成嵌入向量时出错: [编码问题]")
             return None
     
     def get_best_matches(self, new_table_description: str, top_n: int = 3) -> Dict[str, Any]:
@@ -247,20 +250,20 @@ class TableSimilarityCalculator:
             Dict containing similarity results and formatted output
         """
         try:
-            print(f"\nFinding best matches for new table...")
+            print(f"\n正在为新表格查找最佳匹配...")
             try:
-                print(f"Description: {new_table_description}")
+                print(f"表格描述: {new_table_description}")
             except UnicodeEncodeError:
-                print("Description: [Contains Chinese characters]")
+                print("表格描述: [包含中文字符]")
             
             # Generate embedding for new table
             new_embedding = self.embed_new_table_description(new_table_description)
             if new_embedding is None:
                 return {
                     'success': False,
-                    'error': 'Failed to generate embedding for new table',
+                    'error': '无法为新表格生成嵌入向量',
                     'matches': [],
-                    'formatted_output': 'Error: Could not generate embedding'
+                    'formatted_output': '错误: 无法生成嵌入向量'
                 }
             
             # Find similar tables
@@ -269,9 +272,9 @@ class TableSimilarityCalculator:
             if not similarity_results:
                 return {
                     'success': False,
-                    'error': 'No similar tables found',
+                    'error': '未找到相似表格',
                     'matches': [],
-                    'formatted_output': 'No similar tables found in the database.'
+                    'formatted_output': '数据库中未找到相似的表格。'
                 }
             
             # Format results for display
@@ -285,17 +288,17 @@ class TableSimilarityCalculator:
             }
             
         except Exception as e:
-            error_msg = f"Error in get_best_matches: {e}"
+            error_msg = f"查找最佳匹配时出错: {e}"
             try:
                 print(error_msg)
             except UnicodeEncodeError:
-                print("Error in get_best_matches: [Unicode encoding issue]")
-                error_msg = "Unicode encoding error occurred"
+                print("查找最佳匹配时出错: [编码问题]")
+                error_msg = "发生编码错误"
             return {
                 'success': False,
                 'error': error_msg,
                 'matches': [],
-                'formatted_output': f'Error: {error_msg}'
+                'formatted_output': f'错误: {error_msg}'
             }
     
     def get_table_by_index(self, index: int) -> Optional[Dict[str, Any]]:
@@ -321,5 +324,5 @@ class TableSimilarityCalculator:
             }
             
         except Exception as e:
-            print(f"Error getting table by index: {e}")
+            print(f"根据索引获取表格时出错: {e}")
             return None

@@ -65,32 +65,6 @@ def _log_existence(path: str, container: list):
         print(f"⚠️ 文件路径无效或文件不存在: {path}")
 
 
-def convert_2_markdown(file_path: str) -> str:
-    """将Excel文件转换为Markdown格式并保存为.md文件"""
-
-    # 读取Excel文件
-    df = pd.read_excel(file_path)
-    markdown_content = df.to_markdown(index=False)
-
-    # 构造新的Markdown文件名
-    original_name = Path(file_path).stem  # 不带扩展名
-    markdown_file_name = f"{original_name}.md"
-
-    # 目标保存目录
-    markdown_folder = Path(r"D:\asianInfo\ExcelAssist\conversations\files\user_uploaded_md")
-    markdown_folder.mkdir(parents=True, exist_ok=True)  # 如果不存在就创建
-
-    # 完整路径
-    markdown_file_path = markdown_folder / markdown_file_name
-
-    # 写入文件
-    with open(markdown_file_path, "w", encoding="utf-8") as f:
-        f.write(markdown_content)
-
-    return str(markdown_file_path)  # 返回保存路径以便后续使用
-    
-
-
 def save_original_file(source_path: Path, original_files_dir: Path) -> str:
     """
     Save the original file to the original_file subfolder with proper file handling.
@@ -190,13 +164,6 @@ def save_original_file(source_path: Path, original_files_dir: Path) -> str:
     except Exception as e:
         print(f"Unexpected error saving original file: {e}")
         return ""
-
-def convert_document_to_txt(file_path: str) -> str:
-    """Convert document to txt file"""
-    soffice = r"D:\LibreOffice\program\soffice.exe"
-    subprocess.run(
-        [soffice, "--headless", "--convert-to", "txt:Text (encoded):UTF8", file_path, "--outdir", "D:\asianInfo\ExcelAssist\agents\output"], check=True)
-    return file_path
 
 def retrieve_file_content(file_paths: list[str], session_id: str, output_dir: str = None) -> list[str]:
     """Process files and store them as .txt files in the staging area: conversations/session_id/user_uploaded_files
@@ -712,16 +679,6 @@ def clean_date_string(value):
     
     return value  # Return original if no date pattern matched
 
-def read_relative_files_from_data_json(data_json_path: str = "agents/data.json", headers_mapping: str = None) -> str:
-    """
-    Read the relative files from data.json file
-    """
-    with open(data_json_path, 'r', encoding='utf-8') as f:
-        data_json = json.load(f)
-        for key, value in data_json.items():
-            if key in headers_mapping:
-                return value
-    return None
 def find_largest_file(excel_file_paths: list[str]) -> str:
     """
     Find the largest file in the list of Excel file paths
@@ -1251,49 +1208,6 @@ def process_excel_files_for_merge(excel_file_paths: list[str], session_id: str =
             "total_row_count": total_rows
         }
 
-
-def extract_file_from_recall(response: str) -> list:
-    """返回文件名数组"""
-
-    # Parse the response to extract the file list
-    print(f"🔍 开始解析响应内容: {response[:200]}...")
-    
-    try:
-        # Try to parse as JSON array first
-        related_files = json.loads(response)
-        if isinstance(related_files, list):
-            print(f"✅ 成功解析JSON数组: {related_files}")
-            return related_files
-    except:
-        print("❌ JSON解析失败，尝试其他方法")
-        pass
-    
-    try:
-        # Look for patterns like ["file1", "file2"] or ['file1', 'file2']
-        match = re.search(r'\[.*?\]', response)
-        if match:
-            related_files = json.loads(match.group())
-            print(f"✅ 正则匹配成功: {related_files}")
-            return related_files
-    except:
-        print("❌ 正则表达式匹配失败")
-        pass
-    
-    # Check if response contains file names with .txt, .xlsx, .docx extensions
-    file_pattern = r'["""]([^"""]*?\.(txt|xlsx|docx|csv|pdf))["""]'
-    file_matches = re.findall(file_pattern, response)
-    if file_matches:
-        related_files = [match[0] for match in file_matches]
-        print(f"✅ 文件名模式匹配成功: {related_files}")
-        return related_files
-    
-    # Final fallback: split by lines and filter
-    related_files = [line.strip().strip('"\'') for line in response.split('\n') 
-                    if line.strip() and not line.strip().startswith('#') and 
-                    any(ext in line.lower() for ext in ['.txt', '.xlsx', '.docx', '.csv', '.pdf'])]
-    
-    print(f"📁 解析出的相关文件: {related_files}")
-    return related_files
 
 def _clean_csv_data(csv_data: str) -> str:
     """
@@ -2186,32 +2100,6 @@ def reconstruct_csv_with_headers(analysis_response: str, original_filename: str,
         print(f"❌ CSV重构过程出错: {e}")
         return ""
     
-
-def extract_summary_for_each_file(file_content: dict) -> str:
-            """提取文件内容的摘要信息"""
-            summary = ""
-            
-            # 提取表格summary
-            if "表格" in file_content and file_content["表格"]:
-                summary += "表格: \n"
-                tables = file_content["表格"]
-                for table_name in tables:
-                    if isinstance(tables[table_name], dict) and "summary" in tables[table_name]:
-                        summary += f"  {tables[table_name]['summary']}\n"
-                    else:
-                        summary += f"  {table_name}: [无摘要信息]\n"
-            
-            # 提取文档summary
-            if "文档" in file_content and file_content["文档"]:
-                summary += "\n文档: \n"
-                documents = file_content["文档"]
-                for doc_name in documents:
-                    if isinstance(documents[doc_name], dict) and "summary" in documents[doc_name]:
-                        summary += f"  {documents[doc_name]['summary']}\n"
-                    else:
-                        summary += f"  {doc_name}: [无摘要信息]\n"
-            
-            return summary
 
 def clean_llm_error_messages(csv_content: str) -> str:
     """

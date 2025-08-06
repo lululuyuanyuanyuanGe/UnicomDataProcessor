@@ -16,11 +16,11 @@ with open("D:\\asianInfo\\dataProcessor\\agents\\data.txt", "r", encoding="utf-8
     for table in tables:
         if ":" in table:  # Check if the line has the expected format
             table_name, table_content = table.split(":", 1)  # Split only on first occurrence
-            tables_with_description.append(f"数据表： {table_name} 包含表头：{table_content}")
+            tables_with_description.append(f"{table_name} 包含表头：{table_content}")
         else:
-            print(f"⚠️ Skipping malformed line: {table}")
+            print(f"跳过格式错误的行: {table}")
 
-print(f"📋 Found {len(tables_with_description)} tables to process")
+print(f"找到 {len(tables_with_description)} 个表格需要处理")
 
 # Process tables in batches of 5
 batch_size = 5
@@ -29,25 +29,25 @@ table_names = []
 
 # Extract table names for metadata
 for table in tables:
-    if "：" in table:
-        table_name, _ = table.split("：", 1)
+    if ":" in table:
+        table_name, _ = table.split(":", 1)
         table_names.append(table_name)
 
 for i in range(0, len(tables_with_description), batch_size):
     batch = tables_with_description[i:i+batch_size]
-    print(f"Processing batch {i//batch_size + 1}: {len(batch)} tables")
-    
+    print(f"正在处理第 {i//batch_size + 1} 批: {len(batch)} 个表格")
+    print("batch里的内容: ", batch)
     # Call embedding model for this batch
     try:
         embeddings = invoke_embedding_model(model_name="Qwen/Qwen3-Embedding-8B", texts=batch)
         all_embeddings.extend(embeddings)
-        print(f"✅ Successfully processed batch {i//batch_size + 1}")
+        print(f"成功处理第 {i//batch_size + 1} 批")
     except Exception as e:
-        print(f"❌ Error processing batch {i//batch_size + 1}: {e}")
+        print(f"处理第 {i//batch_size + 1} 批时出错: {e}")
         continue
 
-print(f"🎉 Completed processing {len(all_embeddings)} embeddings for {len(tables_with_description)} tables")
-print(f"📊 Embedding dimensions: {len(all_embeddings[0]) if all_embeddings else 'N/A'}")
+print(f"🎉 完成处理 {len(all_embeddings)} 个嵌入向量，对应 {len(tables_with_description)} 个表格")
+print(f"📊 嵌入向量维度: {len(all_embeddings[0]) if all_embeddings else '不可用'}")
 
 # Save embeddings in 3 different formats
 if all_embeddings:
@@ -56,8 +56,8 @@ if all_embeddings:
     # Create table info dictionary
     table_info = {}
     for table in tables:
-        if "：" in table:
-            table_name, table_content = table.split("：", 1)
+        if ":" in table:
+            table_name, table_content = table.split(":", 1)
             table_info[table_name] = table_content
     
     # 1. Save in pickle format
@@ -68,11 +68,11 @@ if all_embeddings:
             'table_descriptions': tables_with_description,
             'table_info': table_info
         }
-        with open('table_embeddings.pkl', 'wb') as f:
+        with open('embedded_tables/table_embeddings.pkl', 'wb') as f:
             pickle.dump(embedding_data, f)
-        print("✅ Saved embeddings to table_embeddings.pkl")
+        print("✅ 已保存嵌入向量到 table_embeddings.pkl")
     except Exception as e:
-        print(f"❌ Error saving embeddings in pickle: {e}")
+        print(f"❌ 保存pickle格式嵌入向量时出错: {e}")
     
     # 2. Save in JSON format (metadata only, embeddings too large for JSON)
     try:
@@ -85,11 +85,11 @@ if all_embeddings:
             'embedding_dimension': len(all_embeddings[0]) if all_embeddings else 0,
             'timestamp': time.time()
         }
-        with open('table_metadata.json', 'w', encoding='utf-8') as f:
+        with open('embedded_tables/table_metadata.json', 'w', encoding='utf-8') as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
-        print("✅ Saved metadata to table_metadata.json")
+        print("✅ 已保存元数据到 table_metadata.json")
     except Exception as e:
-        print(f"❌ Error saving metadata in JSON: {e}")
+        print(f"❌ 保存JSON格式元数据时出错: {e}")
     
     # 3. Save in numpy format
     try:
@@ -98,25 +98,25 @@ if all_embeddings:
         table_names_array = np.array(table_names, dtype=object)
         
         # Save embeddings array only
-        np.save('table_embeddings.npy', embeddings_array)
+        np.save('embedded_tables/table_embeddings.npy', embeddings_array)
         
         # Save multiple arrays in compressed format
-        np.savez_compressed('table_embeddings.npz', 
+        np.savez_compressed('embedded_tables/table_embeddings.npz', 
                            embeddings=embeddings_array,
                            table_names=table_names_array,
                            table_descriptions=np.array(tables_with_description, dtype=object))
         
-        print("✅ Saved embeddings to table_embeddings.npy and table_embeddings.npz")
+        print("✅ 已保存嵌入向量到 table_embeddings.npy 和 table_embeddings.npz")
     except Exception as e:
-        print(f"❌ Error saving embeddings in numpy format: {e}")
+        print(f"❌ 保存numpy格式嵌入向量时出错: {e}")
         
-    print("\n📁 Generated files:")
-    print("  - table_embeddings.pkl (full data with pickle)")
-    print("  - table_metadata.json (metadata only)")
-    print("  - table_embeddings.npy (embeddings as numpy array)")
-    print("  - table_embeddings.npz (embeddings + metadata as compressed numpy)")
+    print("\n📁 生成的文件:")
+    print("  - table_embeddings.pkl (完整数据，pickle格式)")
+    print("  - table_metadata.json (仅元数据)")
+    print("  - table_embeddings.npy (嵌入向量，numpy数组格式)")
+    print("  - table_embeddings.npz (嵌入向量+元数据，压缩numpy格式)")
 else:
-    print("❌ No embeddings generated, skipping file save")
+    print("❌ 未生成嵌入向量，跳过文件保存")
 
 
 

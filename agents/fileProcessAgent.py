@@ -522,10 +522,10 @@ class FileProcessAgent:
         # Get the table description to find matches for
         table_description = state.get("table_headers2embed", "")
         if not table_description:
-            print("No table description found for similarity matching")
+            print("没有找到用户上传表格，无法进行相似表格匹配")
             return {}
         
-        print("Table description to find matches for:", table_description)
+        print("用户上传表格:", table_description)
         
         try:
             # Initialize similarity calculator
@@ -535,14 +535,10 @@ class FileProcessAgent:
             results = calculator.get_best_matches(table_description, top_n=3)
             
             if results['success']:
-                print("\n=== SIMILARITY ANALYSIS RESULTS ===")
+                print("\n=== 相似表格 ===")
                 print(results['formatted_output'])
                 
-                # Display the matches for user review
-                print("\nTop 3 most similar tables found:")
-                for i, match in enumerate(results['matches'], 1):
-                    print(f"{i}. {match['table_name']} - {match['similarity_formatted']} similarity")
-                
+
                 # Store results in state for further processing
                 return {
                     "similarity_results": results,
