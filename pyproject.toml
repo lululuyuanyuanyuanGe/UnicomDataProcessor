@@ -9,6 +9,7 @@ dependencies = [
     "langchain>=0.3.27",
     "langchain-openai>=0.3.28",
     "langgraph>=0.6.3",
+    "numpy>=2.3.2",
     "pillow>=11.3.0",
     "psutil>=7.0.0",
     "xlwings>=0.33.15",
