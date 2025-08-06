@@ -6,3 +6,4 @@ table.txt
 data.json
 conversations/
 embedded_tables/
+__pycache__/

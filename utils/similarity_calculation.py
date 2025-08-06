@@ -4,6 +4,7 @@ import pickle
 import numpy as np
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Add project root to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -31,7 +32,7 @@ class TableSimilarityCalculator:
         self.table_descriptions = None
         self.table_info = None
         self.embedding_model = "Qwen/Qwen3-Embedding-8B"
-        
+
         # Load existing embeddings on initialization
         self.load_existing_embeddings()
     
@@ -73,40 +74,20 @@ class TableSimilarityCalculator:
             print(f"加载嵌入向量时出错: {e}")
             return False
     
-    def calculate_cosine_similarity(self, vector1: np.ndarray, vector2: np.ndarray) -> float:
+    def calculate_cosine_similarity_sklearn(self, vector1: np.ndarray, vector2: np.ndarray) -> float:
         """
-        Calculate cosine similarity between two vectors and return as percentage.
-        
-        Args:
-            vector1: First vector (numpy array)
-            vector2: Second vector (numpy array)
-            
-        Returns:
-            float: Similarity percentage (0.0-100.0)
+        Calculate cosine similarity using scikit-learn (most efficient and reliable)
         """
         try:
-            # Ensure vectors are numpy arrays
-            v1 = np.array(vector1).flatten()
-            v2 = np.array(vector2).flatten()
+            # Reshape vectors to 2D arrays (required by sklearn)
+            v1 = np.array(vector1).reshape(1, -1)
+            v2 = np.array(vector2).reshape(1, -1)
             
-            # Check dimension compatibility
-            if v1.shape != v2.shape:
-                print(f"向量维度不匹配: {v1.shape} vs {v2.shape}")
-                return 0.0
+            # Calculate similarity (returns values between -1 and 1)
+            similarity = cosine_similarity(v1, v2)[0][0]
             
-            # Handle zero vectors
-            norm1 = np.linalg.norm(v1)
-            norm2 = np.linalg.norm(v2)
-            
-            if norm1 == 0 or norm2 == 0:
-                return 0.0
-            
-            # Calculate cosine similarity
-            dot_product = np.dot(v1, v2)
-            cosine_sim = dot_product / (norm1 * norm2)
-            
-            # Convert to percentage and ensure it's in valid range
-            percentage = max(0.0, min(100.0, cosine_sim * 100))
+            # Convert to percentage (0-100)
+            percentage = max(0.0, min(100.0, (similarity + 1) * 50))  # Map [-1,1] to [0,100]
             
             return percentage
             
@@ -135,7 +116,7 @@ class TableSimilarityCalculator:
             
             # Calculate similarity with each existing table
             for i, existing_embedding in enumerate(self.embeddings):
-                similarity_percentage = self.calculate_cosine_similarity(new_vector, existing_embedding)
+                similarity_percentage = self.calculate_cosine_similarity_sklearn(new_vector, existing_embedding)
                 
                 # Get table information
                 table_name = self.table_names[i] if i < len(self.table_names) else f"表格_{i}"
@@ -192,9 +173,7 @@ class TableSimilarityCalculator:
             if '包含表头：' in clean_description:
                 headers_part = clean_description.split('包含表头：')[1] if '包含表头：' in clean_description else clean_description
                 headers = [h.strip() for h in headers_part.split(',')]
-                headers_preview = ', '.join(headers[:5])  # Show first 5 headers
-                if len(headers) > 5:
-                    headers_preview += f"... (另外还有{len(headers)-5}个)"
+                headers_preview = ', '.join(headers)  # Show first 5 headers
                 formatted_output += f"表头: {headers_preview}\n"
             else:
                 formatted_output += f"描述: {clean_description}\n"

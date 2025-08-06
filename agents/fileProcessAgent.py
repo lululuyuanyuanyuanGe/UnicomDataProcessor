@@ -532,7 +532,7 @@ class FileProcessAgent:
             calculator = TableSimilarityCalculator()
             
             # Find best matching tables
-            results = calculator.get_best_matches(table_description, top_n=3)
+            results = calculator.get_best_matches(table_description, top_n=10)
             
             if results['success']:
                 print("\n=== 相似表格 ===")
