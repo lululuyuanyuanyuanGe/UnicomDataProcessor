@@ -93,7 +93,7 @@ def convert_2_markdown(file_path: str) -> str:
 
 def save_original_file(source_path: Path, original_files_dir: Path) -> str:
     """
-    Save the original file to the original_file subfolder.
+    Save the original file to the original_file subfolder with proper file handling.
     
     Args:
         source_path: Path to the source file
@@ -103,52 +103,92 @@ def save_original_file(source_path: Path, original_files_dir: Path) -> str:
         str: Path to the saved original file, empty string if failed
     """
     import shutil
+    import stat
+    import subprocess
+    import filecmp
+    
+    def kill_libreoffice_processes():
+        """Kill any LibreOffice processes that might be holding file handles"""
+        try:
+            subprocess.run(['taskkill', '/f', '/im', 'soffice.exe'], 
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['taskkill', '/f', '/im', 'soffice.bin'], 
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass  # Ignore errors if processes don't exist
+    
+    def make_file_writable(file_path: Path):
+        """Remove read-only attribute and make file writable"""
+        try:
+            if file_path.exists():
+                # Get current permissions
+                current_permissions = file_path.stat().st_mode
+                # Add write permission for owner, group, and others
+                file_path.chmod(current_permissions | stat.S_IWRITE)
+        except Exception as e:
+            print(f"Cannot modify file permissions: {e}")
     
     try:
         if not source_path.exists():
-            print(f"❌ Source file not found: {source_path}")
+            print(f"Source file not found: {source_path}")
             return ""
             
-        print(f"📁 正在保存原始文件: {source_path.name}")
+        print(f"Saving original file: {source_path.name}")
         
         # Create target path for original file
         original_file_path = original_files_dir / source_path.name
         
-        # Handle duplicate original files by updating content
+        # Check if file already exists
         if original_file_path.exists():
-            print(f"⚠️ 原始文件已存在，正在更新: {source_path.name}")
+            print(f"Original file exists: {source_path.name}")
+            
+            # Compare file contents to see if they're identical
+            try:
+                if filecmp.cmp(source_path, original_file_path, shallow=False):
+                    print(f"File content identical, skipping copy: {source_path.name}")
+                    return str(original_file_path)
+            except Exception:
+                pass  # If comparison fails, proceed with replacement
+            
+            print(f"Cleaning up possible process locks...")
+            # Kill any LibreOffice processes that might be holding the file
+            kill_libreoffice_processes()
+            
+            # Make the target file writable
+            make_file_writable(original_file_path)
+            
             try:
                 # Try to remove existing file
                 original_file_path.unlink()
-                print(f"🗑️ 已删除旧的原始文件: {source_path.name}")
+                print(f"Deleted old original file: {source_path.name}")
             except Exception as e:
-                print(f"❌ 删除旧原始文件失败: {e}")
-                # Check for permission errors
-                if "WinError 5" in str(e) or "Access is denied" in str(e) or "Permission denied" in str(e):
-                    print(f"💡 文件 '{source_path.name}' 可能被其他应用程序锁定")
-                    print(f"📝 请关闭相关应用程序后重试，或使用不同的文件名")
-                    return ""
+                print(f"Failed to delete old original file: {e}")
+                # If still can't delete, check if it's a permission issue
+                if "WinError 5" in str(e) or "Access is denied" in str(e):
+                    print(f"File still locked, trying force operation...")
+                    # Try using os.remove as a fallback
+                    try:
+                        import os
+                        os.remove(str(original_file_path))
+                        print(f"Force deletion successful: {source_path.name}")
+                    except Exception as e2:
+                        print(f"Force deletion also failed: {e2}")
+                        return ""
                 else:
-                    print(f"⚠️ 其他错误: {e}")
+                    print(f"Other error: {e}")
                     return ""
         
         # Copy the original file to the original_file subfolder
         try:
             shutil.copy2(source_path, original_file_path)
-            print(f"💾 原始文件已保存: {original_file_path}")
+            print(f"Original file saved: {original_file_path}")
             return str(original_file_path)
         except Exception as e:
-            print(f"❌ 保存原始文件失败: {e}")
-            # Check for permission errors
-            if "WinError 5" in str(e) or "Access is denied" in str(e) or "Permission denied" in str(e):
-                print(f"💡 目标文件 '{original_file_path}' 可能被其他应用程序锁定")
-                print(f"📝 请关闭相关应用程序后重试")
-            else:
-                print(f"⚠️ 其他错误: {e}")
+            print(f"Failed to save original file: {e}")
             return ""
             
     except Exception as e:
-        print(f"❌ 保存原始文件时发生意外错误: {e}")
+        print(f"Unexpected error saving original file: {e}")
         return ""
 
 def convert_document_to_txt(file_path: str) -> str:
@@ -2405,3 +2445,66 @@ def is_valid_csv_line(line: str) -> bool:
     return True
 
 
+def analyze_single_file(file_path: str) -> tuple[str, str, str]:
+    """Analyze a single file and return (file_path, classification, file_name)"""   
+    try:
+        source_path = Path(file_path)
+        print(f"🔍 正在分析文件: {source_path.name}")
+        
+        if not source_path.exists():
+            print(f"❌ 文件不存在: {file_path}")
+            return file_path, "irrelevant", source_path.name
+        
+        # Read file content for analysis
+        file_content = source_path.read_text(encoding='utf-8')
+        # Truncate content for analysis (to avoid token limits)
+        analysis_content = file_content[:5000] if len(file_content) > 2000 else file_content
+        
+        # Create individual analysis prompt for this file
+        system_prompt = f"""你是一个表格生成智能体，需要分析用户上传的文件内容是不是一个包含有效数据集的表格文件，最直观的是用户上传了一个excel表格，并且并非模板表格，里面有具体的数据，此时将文件
+
+        仔细检查不要把补充文件错误划分为模板文件反之亦然，补充文件里面是有数据的，模板文件里面是空的，或者只有一两个例子数据
+        注意：所有文件已转换为txt格式，表格以HTML代码形式呈现，请根据内容而非文件名或后缀判断。
+
+        当前分析文件:
+        文件名: {source_path.name}
+        文件路径: {file_path}
+        文件内容:
+        {analysis_content}
+
+        请严格按照以下JSON格式回复，只返回这一个文件的分类结果（不要添加任何其他文字），不要将返回内容包裹在```json```中：
+        {{
+            "classification": "irrelevant" | "table"
+        }}"""
+        
+        # Get LLM analysis for this file
+        print("📤 正在调用LLM进行文件分类...")
+        analysis_response = invoke_model(model_name="deepseek-ai/DeepSeek-V3", messages=[SystemMessage(content=system_prompt)])
+
+        # Parse JSON response for this file
+        try:
+            # Extract JSON from response
+            response_content = analysis_response.strip()
+            print(f"📥 LLM分类响应: {response_content}")
+            
+            # Remove markdown code blocks if present
+            if response_content.startswith('```'):
+                response_content = response_content.split('\n', 1)[1]
+                response_content = response_content.rsplit('\n', 1)[0]
+            
+            file_classification = json.loads(response_content)
+            classification_type = file_classification.get("classification", "irrelevant")
+            
+            print(f"✅ 文件 {source_path.name} 分类为: {classification_type}")
+            return file_path, classification_type, source_path.name
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ 文件 {source_path.name} JSON解析错误: {e}")
+            print(f"LLM响应: {analysis_response}")
+            # Fallback: mark as irrelevant for safety
+            return file_path, "irrelevant", source_path.name
+        
+    except Exception as e:
+        print(f"❌ 处理文件出错 {file_path}: {e}")
+        # Return irrelevant on error
+        return file_path, "irrelevant", Path(file_path).name

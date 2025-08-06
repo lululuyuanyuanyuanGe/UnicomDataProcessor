@@ -16,7 +16,8 @@ from utils.file_process import (retrieve_file_content, save_original_file,
                                     ensure_location_structure, check_file_exists_in_data,
                                     get_available_locations, move_template_files_to_final_destination,
                                     move_supplement_files_to_final_destination, delete_files_from_staging_area,
-                                    reconstruct_csv_with_headers, detect_and_process_file_paths)
+                                    reconstruct_csv_with_headers, detect_and_process_file_paths,
+                                    analyze_single_file)
 
 import json
 
@@ -36,6 +37,8 @@ class FileProcessState(TypedDict):
     new_upload_files_processed_path: list[str] # Store the processed new uploaded files
     original_files_path: list[str] # Store the original files in original_file subfolder
     table_files_path: list[str]
+    table_headers2embed: str
+    table_header_embeddings: list[float]
     irrelevant_files_path: list[str]
     irrelevant_original_files_path: list[str] # Track original files to be deleted with irrelevant files
     all_files_irrelevant: bool  # Flag to indicate all files are irrelevant
@@ -77,6 +80,8 @@ class FileProcessAgent:
             "original_files_path": [],
             "uploaded_template_files_path": [],
             "table_files_path": [],
+            "table_headers2embed": "",
+            "table_header_embeddings": [],
             "irrelevant_files_path": [],
             "irrelevant_original_files_path": [],
             "all_files_irrelevant": False,
@@ -205,69 +210,6 @@ class FileProcessAgent:
                 "all_files_irrelevant": True  # Flag for routing to text analysis
             }
         
-        def analyze_single_file(file_path: str) -> tuple[str, str, str]:
-            """Analyze a single file and return (file_path, classification, file_name)"""   
-            try:
-                source_path = Path(file_path)
-                print(f"🔍 正在分析文件: {source_path.name}")
-                
-                if not source_path.exists():
-                    print(f"❌ 文件不存在: {file_path}")
-                    return file_path, "irrelevant", source_path.name
-                
-                # Read file content for analysis
-                file_content = source_path.read_text(encoding='utf-8')
-                # Truncate content for analysis (to avoid token limits)
-                analysis_content = file_content[:5000] if len(file_content) > 2000 else file_content
-                
-                # Create individual analysis prompt for this file
-                system_prompt = f"""你是一个表格生成智能体，需要分析用户上传的文件内容是不是一个包含有效数据集的表格文件，最直观的是用户上传了一个excel表格，并且并非模板表格，里面有具体的数据，此时将文件
-
-                仔细检查不要把补充文件错误划分为模板文件反之亦然，补充文件里面是有数据的，模板文件里面是空的，或者只有一两个例子数据
-                注意：所有文件已转换为txt格式，表格以HTML代码形式呈现，请根据内容而非文件名或后缀判断。
-
-                当前分析文件:
-                文件名: {source_path.name}
-                文件路径: {file_path}
-                文件内容:
-                {analysis_content}
-
-                请严格按照以下JSON格式回复，只返回这一个文件的分类结果（不要添加任何其他文字），不要将返回内容包裹在```json```中：
-                {{
-                    "classification": "irrelevant" | "table"
-                }}"""
-                
-                # Get LLM analysis for this file
-                print("📤 正在调用LLM进行文件分类...")
-                analysis_response = invoke_model(model_name="deepseek-ai/DeepSeek-V3", messages=[SystemMessage(content=system_prompt)])
-
-                # Parse JSON response for this file
-                try:
-                    # Extract JSON from response
-                    response_content = analysis_response.strip()
-                    print(f"📥 LLM分类响应: {response_content}")
-                    
-                    # Remove markdown code blocks if present
-                    if response_content.startswith('```'):
-                        response_content = response_content.split('\n', 1)[1]
-                        response_content = response_content.rsplit('\n', 1)[0]
-                    
-                    file_classification = json.loads(response_content)
-                    classification_type = file_classification.get("classification", "irrelevant")
-                    
-                    print(f"✅ 文件 {source_path.name} 分类为: {classification_type}")
-                    return file_path, classification_type, source_path.name
-                    
-                except json.JSONDecodeError as e:
-                    print(f"❌ 文件 {source_path.name} JSON解析错误: {e}")
-                    print(f"LLM响应: {analysis_response}")
-                    # Fallback: mark as irrelevant for safety
-                    return file_path, "irrelevant", source_path.name
-                
-            except Exception as e:
-                print(f"❌ 处理文件出错 {file_path}: {e}")
-                # Return irrelevant on error
-                return file_path, "irrelevant", Path(file_path).name
         
         # Use ThreadPoolExecutor for parallel processing
         max_workers = min(len(new_files_to_process), 5)  # Limit to 5 concurrent requests
@@ -509,6 +451,13 @@ class FileProcessAgent:
                         
                         # Extract headers from the response
                         headers = extract_headers_from_response(analysis_response)
+                        print("headers: ", headers)
+                        # Append to data.json with proper structure
+                        self.append_table_data_to_json(source_path.name, headers, analysis_response, state["village_name"])
+                        file_stem = Path(source_path.name).stem
+                        table_headers2embed = f"{file_stem} 包含表头：{",".join(headers)}"
+                        print("table_headers2embed: ", table_headers2embed)
+                        state["table_headers2embed"] = table_headers2embed
                         
                     else:
                         print(f"⚠️ 未找到对应的原始Excel文件: {table_file_stem}")
@@ -516,22 +465,33 @@ class FileProcessAgent:
                         file_content = source_path.read_text(encoding='utf-8')
                         headers = extract_headers_from_txt_content(file_content, source_path.name)
                         
+            
+                        
+                        # Append to data.json with basic header structure
+                        self.append_table_data_to_json(source_path.name, headers, f"从文本内容提取的表头: {headers}", state["village_name"])
+
                 except Exception as llm_error:
                     print(f"❌ 表头提取失败: {llm_error}")
                     # Fallback: try to extract from txt content
                     try:
                         file_content = source_path.read_text(encoding='utf-8')
                         headers = extract_headers_from_txt_content(file_content, source_path.name)
+                        print("headers: ", headers)
+                        
+                        # Append fallback data to data.json
+                        # self.append_table_data_to_json(source_path.name, headers, f"表头提取失败，使用文本提取: {headers}", state["village_name"])
                     except Exception as e:
                         print(f"❌ 文本内容提取也失败: {e}")
                         headers = []
+                        # Still append even if failed, for tracking purposes
+                        # self.append_table_data_to_json(source_path.name, [], f"表头提取完全失败: {str(e)}", state["village_name"])
                 
                 # Store extracted headers
                 all_extracted_headers[source_path.name] = headers
                 print(f"✅ 表格文件已处理: {source_path.name} (提取到 {len(headers)} 个表头)")
                 
                 if headers:
-                    print(f"📋 表头列表: {', '.join(headers[:5])}{'...' if len(headers) > 5 else ''}")
+                    print(f"📋 表头列表: {', '.join(headers)}")
                 
             except Exception as e:
                 print(f"❌ 处理表格文件出错 {table_file}: {e}")
@@ -549,6 +509,70 @@ class FileProcessAgent:
         print("=" * 50)
         
         return {"extracted_headers": all_extracted_headers}
+
+    def _select_similar_table4update(self, state: FileProcessState) -> FileProcessState:
+        """This node will select the similar table for update"""
+        print("\n🔍 开始执行: _select_similar_table4update")
+        print("=" * 50)
+        
+        
+        return {}
+
+    def append_table_data_to_json(self, file_name: str, headers: list[str], full_response: str, village_name: str):
+        """
+        Append table data to agents/data.json file with proper structure
+        
+        Args:
+            file_name: Name of the table file
+            headers: List of extracted headers
+            full_response: Full LLM response with table structure
+            village_name: Village name for location-based organization
+        """
+        data_json_path = Path("agents/data.json")
+        
+        # Load existing data or create empty structure
+        try:
+            if data_json_path.exists():
+                with open(data_json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            else:
+                data = {}
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"⚠️ 读取data.json失败: {e}，创建新的数据结构")
+            data = {}
+        
+        # Ensure location structure exists
+        data = ensure_location_structure(data, village_name)
+        
+        # Create file key (remove extension)
+        file_key = Path(file_name).stem
+        
+        # Create new entry with extracted information
+        new_entry = {
+            "file_name": file_name,
+            "headers": headers,
+            "header_count": len(headers),
+            "llm_response": full_response,
+            "timestamp": datetime.now().isoformat(),
+            "extraction_method": "LLM_screenshot" if "Qwen2.5-VL" in str(full_response) else "text_parsing"
+        }
+
+        
+        # Add to tables section
+        data[village_name]["表格"][file_key] = new_entry
+        
+        # Save back to data.json
+        try:
+            with open(data_json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"✅ 已将 {file_name} 的表头信息保存到 data.json")
+            print(f"   - 文件: {file_name}")
+            print(f"   - 位置: {village_name}")
+            print(f"   - 表头数量: {len(headers)}")
+            if headers:
+                print(f"   - 表头样例: {', '.join(headers[:3])}{'...' if len(headers) > 3 else ''}")
+        except Exception as e:
+            print(f"❌ 保存到data.json失败: {e}")
     
         
     def _process_irrelevant(self, state: FileProcessState) -> FileProcessState:
