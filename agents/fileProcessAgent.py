@@ -4,6 +4,8 @@ from pathlib import Path
 # Add root project directory to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
+load_dotenv()
 
 
 from typing import Dict, List, Optional, Any, TypedDict, Annotated
@@ -14,7 +16,7 @@ from utils.file_process import (retrieve_file_content, save_original_file,
                                     ensure_location_structure, check_file_exists_in_data,
                                     get_available_locations, move_template_files_to_final_destination,
                                     move_supplement_files_to_final_destination, delete_files_from_staging_area,
-                                    reconstruct_csv_with_headers)
+                                    reconstruct_csv_with_headers, detect_and_process_file_paths)
 
 import json
 
@@ -53,12 +55,14 @@ class FileProcessAgent:
         graph.add_node("file_upload", self._file_upload)
         graph.add_node("analyze_uploaded_files", self._analyze_uploaded_files)
         graph.add_node("route_after_analyze_uploaded_files", self._route_after_analyze_uploaded_files)
+        graph.add_node("process_table", self._process_table)
         graph.add_node("process_irrelevant", self._process_irrelevant)
         graph.add_node("summary_file_upload", self._summary_file_upload)
 
         graph.add_edge(START, "file_upload")
         graph.add_edge("file_upload", "analyze_uploaded_files")
         graph.add_conditional_edges("analyze_uploaded_files", self._route_after_analyze_uploaded_files)
+        graph.add_edge("process_table", "summary_file_upload")
         graph.add_edge("process_irrelevant", "summary_file_upload")
         graph.add_edge("summary_file_upload", END)
 
@@ -153,6 +157,11 @@ class FileProcessAgent:
             # Safely handle the case where upload_files_path might not exist in state
             existing_files = state.get("upload_files_path", [])
             existing_original_files = state.get("original_files_path", [])
+            print("detected_files 类型: ", type(detected_files))
+            print("existing_files 类型: ", type(existing_files))
+            print("existing_original_files 类型: ", type(existing_original_files))
+            print("processed_files 类型: ", type(processed_files))
+            print("original_files 类型: ", type(original_files))
             return {
                 "new_upload_files_path": detected_files,
                 "upload_files_path": existing_files + detected_files,
@@ -372,10 +381,8 @@ class FileProcessAgent:
         # Some files are relevant - process them in parallel
         sends = []
         if state.get("table_files_path"):
-            print("Debug: process_table")
             sends.append(Send("process_table", state))
         if state.get("irrelevant_files_path"):
-            print("Debug: process_irrelevant")
             sends.append(Send("process_irrelevant", state))
 
         # The parallel nodes will automatically converge, then continue to summary
@@ -637,5 +644,6 @@ class FileProcessAgent:
             return initial_state
 if __name__ == "__main__":
     upload_files_path = input("请输入上传文件路径: ")
+    upload_files_path = detect_and_process_file_paths(upload_files_path)
     agent = FileProcessAgent()
-    agent.run_file_process_agent()
+    agent.run_file_process_agent(upload_files_path = upload_files_path)

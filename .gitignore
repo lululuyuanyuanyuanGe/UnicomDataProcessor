@@ -3,5 +3,6 @@
 sql_queries.txt
 data.txt
 table.txt
-embedded_tables/
 data.json
+conversations/
+embedded_tables/
