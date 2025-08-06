@@ -10,7 +10,7 @@ load_dotenv()
 
 from typing import Dict, List, Optional, Any, TypedDict, Annotated
 from datetime import datetime
-from utils.modelRelated import invoke_model, invoke_model_with_screenshot
+from utils.modelRelated import invoke_model, invoke_model_with_screenshot, invoke_embedding_model
 from utils.file_process import (retrieve_file_content, save_original_file,
                                     extract_filename, 
                                     ensure_location_structure, check_file_exists_in_data,
@@ -18,6 +18,7 @@ from utils.file_process import (retrieve_file_content, save_original_file,
                                     move_supplement_files_to_final_destination, delete_files_from_staging_area,
                                     reconstruct_csv_with_headers, detect_and_process_file_paths,
                                     analyze_single_file)
+from utils.similarity_calculation import TableSimilarityCalculator
 
 import json
 
@@ -59,13 +60,15 @@ class FileProcessAgent:
         graph.add_node("analyze_uploaded_files", self._analyze_uploaded_files)
         graph.add_node("route_after_analyze_uploaded_files", self._route_after_analyze_uploaded_files)
         graph.add_node("process_table", self._process_table)
+        graph.add_node("select_similar_table4update", self._select_similar_table4update)
         graph.add_node("process_irrelevant", self._process_irrelevant)
         graph.add_node("summary_file_upload", self._summary_file_upload)
 
         graph.add_edge(START, "file_upload")
         graph.add_edge("file_upload", "analyze_uploaded_files")
         graph.add_conditional_edges("analyze_uploaded_files", self._route_after_analyze_uploaded_files)
-        graph.add_edge("process_table", "summary_file_upload")
+        graph.add_edge("process_table", "select_similar_table4update")
+        graph.add_edge("select_similar_table4update", "summary_file_upload")
         graph.add_edge("process_irrelevant", "summary_file_upload")
         graph.add_edge("summary_file_upload", END)
 
@@ -454,10 +457,7 @@ class FileProcessAgent:
                         print("headers: ", headers)
                         # Append to data.json with proper structure
                         self.append_table_data_to_json(source_path.name, headers, analysis_response, state["village_name"])
-                        file_stem = Path(source_path.name).stem
-                        table_headers2embed = f"{file_stem} 包含表头：{",".join(headers)}"
-                        print("table_headers2embed: ", table_headers2embed)
-                        state["table_headers2embed"] = table_headers2embed
+    
                         
                     else:
                         print(f"⚠️ 未找到对应的原始Excel文件: {table_file_stem}")
@@ -504,19 +504,68 @@ class FileProcessAgent:
             print(f"  - {filename}: {len(headers)} 个表头")
             total_headers += len(headers)
         print(f"  - 总计: {total_headers} 个表头从 {len(table_files)} 个文件中提取")
-        
+        file_stem = Path(source_path.name).stem
+        table_headers2embed = f"{file_stem} 包含表头：{",".join(headers)}"
+        print("table_headers2embed: ", table_headers2embed)
+        state["table_headers2embed"] = table_headers2embed
         print("✅ _process_table 执行完成")
         print("=" * 50)
         
-        return {"extracted_headers": all_extracted_headers}
+        return {"extracted_headers": all_extracted_headers,
+                "table_headers2embed": table_headers2embed}
 
     def _select_similar_table4update(self, state: FileProcessState) -> FileProcessState:
         """This node will select the similar table for update"""
-        print("\n🔍 开始执行: _select_similar_table4update")
+        print("\n开始执行: _select_similar_table4update")
         print("=" * 50)
         
+        # Get the table description to find matches for
+        table_description = state.get("table_headers2embed", "")
+        if not table_description:
+            print("No table description found for similarity matching")
+            return {}
         
-        return {}
+        print("Table description to find matches for:", table_description)
+        
+        try:
+            # Initialize similarity calculator
+            calculator = TableSimilarityCalculator()
+            
+            # Find best matching tables
+            results = calculator.get_best_matches(table_description, top_n=3)
+            
+            if results['success']:
+                print("\n=== SIMILARITY ANALYSIS RESULTS ===")
+                print(results['formatted_output'])
+                
+                # Display the matches for user review
+                print("\nTop 3 most similar tables found:")
+                for i, match in enumerate(results['matches'], 1):
+                    print(f"{i}. {match['table_name']} - {match['similarity_formatted']} similarity")
+                
+                # Store results in state for further processing
+                return {
+                    "similarity_results": results,
+                    "best_match": results['top_match'],
+                    "similarity_analysis_completed": True
+                }
+            else:
+                print(f"Failed to find similar tables: {results['error']}")
+                return {
+                    "similarity_results": None,
+                    "best_match": None,
+                    "similarity_analysis_completed": False,
+                    "similarity_error": results['error']
+                }
+                
+        except Exception as e:
+            print(f"Error during similarity analysis: {e}")
+            return {
+                "similarity_results": None,
+                "best_match": None,
+                "similarity_analysis_completed": False,
+                "similarity_error": str(e)
+            }
 
     def append_table_data_to_json(self, file_name: str, headers: list[str], full_response: str, village_name: str):
         """
