@@ -5,11 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "beautifulsoup4>=4.13.4",
+    "bs4>=0.0.2",
+    "chardet>=5.2.0",
     "dotenv>=0.9.9",
     "langchain>=0.3.27",
     "langchain-openai>=0.3.28",
     "langgraph>=0.6.3",
     "numpy>=2.3.2",
+    "pandas>=2.3.1",
     "pillow>=11.3.0",
     "psutil>=7.0.0",
     "xlwings>=0.33.15",

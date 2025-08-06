@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "Bash(chcp 65001)"
+      "Bash(chcp 65001)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }
