@@ -55,15 +55,26 @@ class DatabaseManager:
         print("Database connection closed")
     
     def fetch_all_tables(self) -> List[str]:
-        """Get all table names from database"""
+        """Get all table names from database (excluding views)"""
         try:
-            self.cursor.execute("SHOW TABLES")
+            # Get all tables and filter out views
+            self.cursor.execute("SHOW FULL TABLES WHERE Table_Type = 'BASE TABLE'")
             tables = [table[0] for table in self.cursor.fetchall()]
-            print(f"Found {len(tables)} tables in database")
+            print(f"Found {len(tables)} tables in database (excluding views)")
             return tables
         except Exception as e:
             print(f"Error fetching tables: {e}")
-            return []
+            # Fallback to simple SHOW TABLES if the above fails
+            try:
+                self.cursor.execute("SHOW TABLES")
+                all_objects = [table[0] for table in self.cursor.fetchall()]
+                # Filter out views manually by checking if they end with '_view'
+                tables = [table for table in all_objects if not table.lower().endswith('_view')]
+                print(f"Found {len(tables)} tables using fallback method")
+                return tables
+            except Exception as e2:
+                print(f"Error with fallback method: {e2}")
+                return []
     
     def get_table_ddl(self, table_name: str) -> Optional[str]:
         """Get DDL (CREATE TABLE statement) for a specific table"""
@@ -148,9 +159,8 @@ class DatabaseManager:
         # Load existing data
         data = self.load_data_json()
         
-        # Ensure database tables section exists
-        if "数据库表格" not in data["ChatBI"]:
-            data["ChatBI"]["数据库表格"] = {}
+        # Clear and recreate database tables section to remove any old view entries
+        data["ChatBI"]["数据库表格"] = {}
         
         # Get all tables
         tables = self.fetch_all_tables()
@@ -199,7 +209,7 @@ class DatabaseManager:
         table_names = []
         
         for chinese_table_name, table_info in data["ChatBI"]["数据库表格"].items():
-            headers_str = ",".join(table_info["headers"])
+            headers_str = ",".join(table_info["chinese_headers"])
             description = f"{chinese_table_name} 包含表头：{headers_str}"
             tables_with_description.append(description)
             table_names.append(chinese_table_name)
@@ -236,7 +246,7 @@ class DatabaseManager:
             # Create table info dictionary
             table_info = {}
             for chinese_name, info in data["ChatBI"]["数据库表格"].items():
-                headers_str = ",".join(info["headers"])
+                headers_str = ",".join(info["chinese_headers"])
                 table_info[chinese_name] = headers_str
             
             # Save in pickle format (following existing structure)
