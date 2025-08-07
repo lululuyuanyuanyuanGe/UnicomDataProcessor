@@ -165,13 +165,12 @@ def save_original_file(source_path: Path, original_files_dir: Path) -> str:
         print(f"Unexpected error saving original file: {e}")
         return ""
 
-def retrieve_file_content(file_paths: list[str], session_id: str, output_dir: str = None) -> list[str]:
+def retrieve_file_content(file_paths: list[str], output_dir: str = None) -> list[str]:
     """Process files and store them as .txt files in the staging area: conversations/session_id/user_uploaded_files
     This function only handles file processing, not original file saving.
     
     Args:
         file_paths: List of file paths to process
-        session_id: Session identifier for folder structure
         output_dir: Optional output directory override
         
     Returns:
@@ -184,11 +183,11 @@ def retrieve_file_content(file_paths: list[str], session_id: str, output_dir: st
         staging_dir = Path(output_dir)
         staging_dir.mkdir(parents=True, exist_ok=True)
     else:
-        # Create the staging area: conversations/session_id/user_uploaded_files
+        # Create the staging area: temp
         project_root = Path.cwd()
-        staging_dir = project_root / "conversations" / session_id / "user_uploaded_files"
+        staging_dir = project_root / "temp"
         staging_dir.mkdir(parents=True, exist_ok=True)
-        output_dir = project_root / "conversations" / session_id / "output"
+        output_dir = project_root / "temp"
         output_dir.mkdir(parents=True, exist_ok=True)
     
     processed_files = []

@@ -1,5 +1,7 @@
 import sys
 from pathlib import Path
+import os
+import stat
 
 # Add root project directory to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -167,11 +169,11 @@ class FileProcessAgent:
             
             # Create staging area for original files
             project_root = Path.cwd()
-            staging_dir = project_root / "conversations" / state["session_id"] / "user_uploaded_files"
+            staging_dir = project_root / "temp"
             staging_dir.mkdir(parents=True, exist_ok=True)
             
             # Process the files to get .txt versions
-            processed_files = retrieve_file_content(detected_files, state["session_id"])
+            processed_files = retrieve_file_content(detected_files)
             
             # Create processed files with timestamps
             current_timestamp = datetime.now().isoformat()
@@ -528,7 +530,8 @@ class FileProcessAgent:
                 try:
                     old_path = Path(old_file_path)
                     if old_path.exists():
-                        old_path.unlink()
+                        os.chmod(str(old_path), stat.S_IWRITE)
+                        os.remove(old_path)
                         print(f"🗑️ 已删除旧文件: {old_path.name}")
                 except Exception as e:
                     print(f"⚠️ 删除旧文件失败: {e}")
@@ -537,7 +540,8 @@ class FileProcessAgent:
             # This handles cases where files exist but aren't tracked in JSON
             if dest_path.exists():
                 try:
-                    dest_path.unlink()
+                    os.chmod(str(dest_path), stat.S_IWRITE)
+                    os.remove(dest_path)
                     print(f"🗑️ 已删除现有文件: {dest_path.name}")
                 except Exception as e:
                     print(f"⚠️ 删除现有文件失败: {e}")
@@ -723,15 +727,12 @@ class FileProcessAgent:
                 table_data["similarity_match"] = {
                     "top_matches": results.get('matches', []),
                     "best_match": results.get('top_match'),
-                    "similarity_scores": [float(match.get('similarity', 0)) for match in results.get('matches', [])],
-                    "formatted_output": results.get('formatted_output', '')
                 }
             else:
                 print(f"❌ 相似度计算失败: {results.get('error', '未知错误')}")
                 table_data["similarity_match"] = {
                     "top_matches": [],
                     "best_match": None,
-                    "similarity_scores": [],
                     "error": results.get('error', '相似度计算失败')
                 }
                 
@@ -742,7 +743,6 @@ class FileProcessAgent:
             table_data["similarity_match"] = {
                 "top_matches": [],
                 "best_match": None,
-                "similarity_scores": [],
                 "error": f"相似度计算异常: {str(e)}"
             }
             return table_data
@@ -875,7 +875,21 @@ class FileProcessAgent:
             
         print("\n📁 文件存储信息:")
         print("  - 原始文件位置: uploaded_files/ 目录")
-        print("  - 处理结果存储: agents/uploaded_files.json")
+        print("  - 处理结果存储: src/uploaded_files.json")
+        
+        # Cleanup temp folder
+        print("\n🧹 正在清理临时文件...")
+        temp_dir = Path("temp")
+        if temp_dir.exists():
+            try:
+                # Remove all files and subdirectories in temp folder
+                shutil.rmtree(str(temp_dir), ignore_errors=True)
+                temp_dir.mkdir(parents=True, exist_ok=True)  # Recreate empty temp folder
+                print("✅ 临时文件夹已清理完成")
+            except Exception as e:
+                print(f"⚠️ 清理临时文件夹失败: {e}")
+        else:
+            print("⚠️ 临时文件夹不存在，跳过清理")
         
         print("✅ _summary_file_upload 执行完成")
         print("=" * 50)
