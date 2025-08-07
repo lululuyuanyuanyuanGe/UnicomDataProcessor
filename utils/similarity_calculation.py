@@ -19,7 +19,7 @@ class TableSimilarityCalculator:
     and formatting results for user decision making.
     """
     
-    def __init__(self, embeddings_path: str = "embedded_tables/table_embeddings.pkl"):
+    def __init__(self, embeddings_path: str = "embedded_tables/database_table_embeddings.pkl"):
         """
         Initialize the similarity calculator with embeddings data.
         
