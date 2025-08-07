@@ -519,8 +519,12 @@ class FileProcessAgent:
             
             file_extension = source_path.suffix
             
+            # ALWAYS use clean name without timestamp - no more timestamped files
+            new_filename = f"{chinese_name}{file_extension}"
+            dest_path = uploads_dir / new_filename
+            
+            # If this is a replacement, delete the old file first
             if replacement_mode and old_file_path:
-                # Delete old file first
                 try:
                     old_path = Path(old_file_path)
                     if old_path.exists():
@@ -528,31 +532,21 @@ class FileProcessAgent:
                         print(f"🗑️ 已删除旧文件: {old_path.name}")
                 except Exception as e:
                     print(f"⚠️ 删除旧文件失败: {e}")
-                
-                # Use clean name without timestamp for replacement
-                new_filename = f"{chinese_name}{file_extension}"
-            else:
-                # For new files, still use timestamp to avoid conflicts during processing
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                new_filename = f"{chinese_name}_{timestamp}{file_extension}"
             
-            # Create destination path
-            dest_path = uploads_dir / new_filename
+            # If destination file already exists (even for new files), remove it first
+            # This handles cases where files exist but aren't tracked in JSON
+            if dest_path.exists():
+                try:
+                    dest_path.unlink()
+                    print(f"🗑️ 已删除现有文件: {dest_path.name}")
+                except Exception as e:
+                    print(f"⚠️ 删除现有文件失败: {e}")
             
-            # If destination already exists (shouldn't happen with our logic), add suffix
-            counter = 1
-            original_dest = dest_path
-            while dest_path.exists():
-                stem = original_dest.stem
-                suffix = original_dest.suffix
-                dest_path = original_dest.parent / f"{stem}_{counter}{suffix}"
-                counter += 1
-            
-            # Copy file to new location
+            # Copy file to new location with clean name
             shutil.copy2(str(source_path), str(dest_path))
             
-            action = "替换" if replacement_mode else "移动"
-            print(f"✅ 文件已{action}到: {dest_path}")
+            action = "替换" if replacement_mode else "保存"
+            print(f"✅ 文件已{action}到: {dest_path.name} (无时间戳)")
             return str(dest_path)
             
         except Exception as e:
