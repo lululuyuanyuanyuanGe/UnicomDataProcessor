@@ -82,35 +82,37 @@ class DatabaseManager:
         table_info = {
             "english_table_name": table_name,
             "chinese_table_name": "",
-            "headers": [],
+            "chinese_headers": [],
             "english_headers": [],
             "header_count": 0
         }
         
-        # Extract table comment (Chinese name)
-        table_comment_match = re.search(r"COMMENT='([^']*)'", ddl_text, re.IGNORECASE)
+        # Extract table comment (Chinese name) - look at the end of CREATE TABLE statement
+        table_comment_match = re.search(r"COMMENT='([^']*)'(?:\s*;?)$", ddl_text, re.IGNORECASE | re.MULTILINE)
         if table_comment_match:
             table_info["chinese_table_name"] = table_comment_match.group(1)
         else:
             # Use English name as fallback
             table_info["chinese_table_name"] = table_name
         
-        # Extract column definitions and comments
-        column_pattern = r"`([^`]+)`\s+[^,\n]*?(?:COMMENT\s+'([^']*)')?(?:,|\s*\))"
-        columns = re.findall(column_pattern, ddl_text, re.IGNORECASE | re.MULTILINE)
+        # Extract column definitions and comments - improved regex pattern
+        # This pattern matches: `column_name` type COMMENT 'comment text'
+        column_pattern = r"`([^`]+)`\s+[^,\n]*?COMMENT\s+'([^']+)'"
+        columns = re.findall(column_pattern, ddl_text, re.IGNORECASE | re.DOTALL)
         
         chinese_headers = []
         english_headers = []
         
         for column_name, comment in columns:
-            # Skip auto increment and primary key columns in some cases
-            if column_name.lower() not in ['id'] or comment:
-                english_headers.append(column_name)
-                # Use comment as Chinese name, fallback to English name
-                chinese_name = comment if comment else column_name
-                chinese_headers.append(chinese_name)
+            # Skip the auto-increment ID column unless we want to include it
+            if column_name.lower() == 'id':
+                continue
+                
+            english_headers.append(column_name)
+            # Use comment as Chinese name (it should always exist given our regex)
+            chinese_headers.append(comment)
         
-        table_info["headers"] = chinese_headers
+        table_info["chinese_headers"] = chinese_headers
         table_info["english_headers"] = english_headers
         table_info["header_count"] = len(chinese_headers)
         
@@ -124,10 +126,10 @@ class DatabaseManager:
                 return json.load(f)
         except FileNotFoundError:
             # Create basic structure if file doesn't exist
-            return {"ChatBI": {"表格": {}, "文档": {}}}
+            return {"ChatBI": {}}
         except Exception as e:
             print(f"Error loading data.json: {e}")
-            return {"ChatBI": {"表格": {}, "文档": {}}}
+            return {"ChatBI": {}}
     
     def save_data_json(self, data: Dict):
         """Save data to data.json file"""
@@ -169,12 +171,10 @@ class DatabaseManager:
             
             # Create entry in data.json following existing pattern
             data["ChatBI"]["数据库表格"][chinese_table_name] = {
+                "chinese_headers": table_info["chinese_headers"],
                 "english_table_name": table_info["english_table_name"],
-                "headers": table_info["headers"],
                 "english_headers": table_info["english_headers"], 
                 "header_count": table_info["header_count"],
-                "timestamp": datetime.now().isoformat(),
-                "extraction_method": "database_ddl"
             }
             
             print(f"   Table processed - {table_info['header_count']} columns")
