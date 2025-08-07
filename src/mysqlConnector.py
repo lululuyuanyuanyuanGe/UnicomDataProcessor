@@ -265,7 +265,6 @@ class DatabaseManager:
         
         # Save embeddings (following existing pattern)
         if all_embeddings:
-            import numpy as np
             
             # Create table info dictionary
             table_info = {}

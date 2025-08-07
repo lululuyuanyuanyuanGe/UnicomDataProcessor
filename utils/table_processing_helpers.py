@@ -85,12 +85,16 @@ def parse_llm_table_response(response: str) -> Dict[str, any]:
     """
     Parse LLM response to extract table name and headers
     
-    Expected response format:
+    Expected fixed response format:
     {
-        "table_name": "表格名称",
-        "headers": ["表头1", "表头2", "表头3"]
+        "filename.xls": {
+            "表格结构": {
+                "表头1": [],
+                "表头2": [],
+                "表头3": []
+            }
+        }
     }
-    or similar structure
     """
     try:
         # Try to parse as JSON first
@@ -100,23 +104,23 @@ def parse_llm_table_response(response: str) -> Dict[str, any]:
                 try:
                     data = json.loads(json_match.group())
                     
-                    # Look for table name in various possible keys
+                    # Extract filename (the top-level key) and remove suffix
                     table_name = ""
                     headers = []
                     
-                    # Common keys for table name
-                    for key in ["table_name", "表格名称", "文件名", "name", "title", "标题"]:
-                        if key in data:
-                            table_name = str(data[key]).strip()
-                            break
+                    # Get the first (and should be only) key which is the filename
+                    filename_key = next(iter(data.keys()))
+                    if filename_key:
+                        # Remove file extension to get clean table name
+                        table_name = Path(filename_key).stem
+                        
+                        # Navigate to 表格结构 to get headers
+                        file_data = data[filename_key]
+                        if isinstance(file_data, dict) and "表格结构" in file_data:
+                            table_structure = file_data["表格结构"]
+                            if isinstance(table_structure, dict):
+                                headers = list(table_structure.keys())
                     
-                    # Common keys for headers
-                    for key in ["headers", "表头", "columns", "字段", "fields"]:
-                        if key in data and isinstance(data[key], list):
-                            headers = [str(h).strip() for h in data[key]]
-                            break
-                    
-                    # If we found structured data, return it
                     if table_name or headers:
                         return {
                             "table_name": table_name,
@@ -124,10 +128,12 @@ def parse_llm_table_response(response: str) -> Dict[str, any]:
                             "success": True
                         }
                         
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as je:
+                    print(f"JSON解析失败: {je}")
+                except Exception as pe:
+                    print(f"处理JSON数据失败: {pe}")
         
-        # Fallback: try to extract from plain text
+        # Fallback: try to extract from plain text (keep original fallback logic)
         lines = response.split('\n')
         table_name = ""
         headers = []

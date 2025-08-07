@@ -4,6 +4,8 @@ sql_queries.txt
 data.txt
 table.txt
 data.json
+uploaded_files.json
 conversations/
 embedded_tables/
 __pycache__/
+uploaded_files/

@@ -89,7 +89,7 @@ class TableSimilarityCalculator:
             # Convert to percentage (0-100)
             percentage = max(0.0, min(100.0, (similarity + 1) * 50))  # Map [-1,1] to [0,100]
             
-            return percentage
+            return float(percentage)  # Ensure native Python float
             
         except Exception as e:
             print(f"计算余弦相似度时出错: {e}")
@@ -126,7 +126,7 @@ class TableSimilarityCalculator:
                     'index': i,
                     'table_name': table_name,
                     'description': table_description,
-                    'similarity_percentage': similarity_percentage,
+                    'similarity_percentage': float(similarity_percentage),  # Ensure native Python float
                     'similarity_formatted': f"{similarity_percentage:.1f}%"
                 })
             

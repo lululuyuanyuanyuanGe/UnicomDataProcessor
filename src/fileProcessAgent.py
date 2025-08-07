@@ -21,7 +21,7 @@ from utils.file_process import (retrieve_file_content, save_original_file,
                                     move_supplement_files_to_final_destination, delete_files_from_staging_area,
                                     reconstruct_csv_with_headers, detect_and_process_file_paths,
                                     analyze_single_file)
-from utils.similarity_calculation import TableSimilarityCalculator
+from similarity_calculation import TableSimilarityCalculator
 from utils.table_processing_helpers import (
     extract_headers_from_response, 
     extract_headers_from_txt_content,
@@ -33,7 +33,7 @@ from utils.table_processing_helpers import (
 import json
 
 from langgraph.graph import StateGraph, END, START
-from langgraph.constants import Send
+from langgraph.types import Send
 # from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
@@ -122,7 +122,7 @@ class FileProcessAgent:
             print(f"📋 检测到 {len(detected_files)} 个文件")
             
             # Load data.json with error handling
-            data_file = Path("agents/data.json")
+            data_file = Path("data.json")
             try:
                 with open(data_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -466,7 +466,7 @@ class FileProcessAgent:
 
     def append_table_data_to_json(self, file_name: str, headers: list[str], full_response: str, village_name: str):
         """
-        Append table data to agents/data.json file with proper structure
+        Append table data to data.json file with proper structure
         
         Args:
             file_name: Name of the table file
@@ -474,7 +474,7 @@ class FileProcessAgent:
             full_response: Full LLM response with table structure
             village_name: Village name for location-based organization
         """
-        data_json_path = Path("agents/data.json")
+        data_json_path = Path("data.json")
         
         # Load existing data or create empty structure
         try:
@@ -522,7 +522,7 @@ class FileProcessAgent:
     
     def load_uploaded_files_json(self) -> Dict:
         """Load existing uploaded_files.json file with thread safety"""
-        uploaded_files_json_path = Path("agents/uploaded_files.json")
+        uploaded_files_json_path = Path("uploaded_files.json")
         
         with self._json_lock:
             try:
@@ -537,7 +537,7 @@ class FileProcessAgent:
 
     def save_uploaded_files_json(self, data: Dict):
         """Save data to uploaded_files.json file with thread safety"""
-        uploaded_files_json_path = Path("agents/uploaded_files.json")
+        uploaded_files_json_path = Path("uploaded_files.json")
         
         with self._json_lock:
             try:
@@ -725,7 +725,7 @@ class FileProcessAgent:
                 table_data["similarity_match"] = {
                     "top_matches": results.get('matches', []),
                     "best_match": results.get('top_match'),
-                    "similarity_scores": [match.get('similarity', 0) for match in results.get('matches', [])],
+                    "similarity_scores": [float(match.get('similarity', 0)) for match in results.get('matches', [])],
                     "formatted_output": results.get('formatted_output', '')
                 }
             else:
@@ -882,7 +882,7 @@ class FileProcessAgent:
         print("✅ _summary_file_upload 执行完成")
         print("=" * 50)
         
-        return {}
+        return {**state}
 
     def run_file_process_agent(self, session_id: str = "1", upload_files_path: list[str] = [], village_name: str = "ChatBI") -> FileProcessState:
         """Driver to run the process file agent"""
