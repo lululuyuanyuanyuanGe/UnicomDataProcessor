@@ -7,6 +7,7 @@ import time
 import pickle
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import settings
@@ -216,25 +217,48 @@ class DatabaseManager:
         
         print(f"Found {len(tables_with_description)} database tables to process")
         
-        # Process tables in batches of 5 (following existing pattern)
+        # Process tables in batches of 5 using concurrent processing
         batch_size = 5
         all_embeddings = []
         
+        # Create batches
+        batches = []
         for i in range(0, len(tables_with_description), batch_size):
             batch = tables_with_description[i:i+batch_size]
-            print(f"Processing batch {i//batch_size + 1}: {len(batch)} tables")
-            print(f"Processing batch {i//batch_size + 1} with {len(batch)} items")
-            
+            batches.append((i//batch_size + 1, batch))
+        
+        def process_batch(batch_data):
+            batch_num, batch = batch_data
+            print(f"Processing batch {batch_num}: {len(batch)} tables")
             try:
                 embeddings = invoke_embedding_model(model_name="Qwen/Qwen3-Embedding-8B", texts=batch)
-                all_embeddings.extend(embeddings)
-                print(f"Successfully processed batch {i//batch_size + 1}")
-                
-                # Add delay to avoid rate limiting
-                time.sleep(1)
+                print(f"Successfully processed batch {batch_num}")
+                return batch_num, embeddings
             except Exception as e:
-                print(f"Error processing batch {i//batch_size + 1}: {e}")
-                continue
+                print(f"Error processing batch {batch_num}: {e}")
+                return batch_num, None
+        
+        # Use ThreadPoolExecutor for concurrent processing
+        max_workers = min(5, len(batches))  # Limit concurrent requests to avoid rate limiting
+        batch_results = {}
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all batches
+            future_to_batch = {executor.submit(process_batch, batch_data): batch_data[0] for batch_data in batches}
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_batch):
+                batch_num = future_to_batch[future]
+                try:
+                    batch_num_result, embeddings = future.result()
+                    if embeddings is not None:
+                        batch_results[batch_num_result] = embeddings
+                except Exception as e:
+                    print(f"Batch {batch_num} generated an exception: {e}")
+        
+        # Combine results in order
+        for batch_num in sorted(batch_results.keys()):
+            all_embeddings.extend(batch_results[batch_num])
         
         print(f"Completed processing {len(all_embeddings)} embeddings for {len(tables_with_description)} database tables")
         print(f"Embedding dimension: {len(all_embeddings[0]) if all_embeddings else 'N/A'}")
@@ -278,6 +302,7 @@ class DatabaseManager:
                     'table_info': table_info,
                     'table_names': table_names,
                     'table_descriptions': tables_with_description,
+                    'table_embeddings': [embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding) for embedding in all_embeddings],
                     'embedding_dimension': len(all_embeddings[0]) if all_embeddings else 0,
                     'timestamp': time.time(),
                     'source': 'database_schema'
@@ -285,7 +310,26 @@ class DatabaseManager:
                 
                 metadata_path = os.path.join(embedded_dir, "database_table_metadata.json")
                 with open(metadata_path, 'w', encoding='utf-8') as f:
-                    json.dump(metadata, f, ensure_ascii=False, indent=2)
+                    # Custom JSON formatting to keep embeddings compact
+                    metadata_copy = metadata.copy()
+                    embeddings = metadata_copy.pop('table_embeddings')
+                    
+                    # Write metadata without embeddings first
+                    json_str = json.dumps(metadata_copy, ensure_ascii=False, indent=2)
+                    
+                    # Insert embeddings with custom formatting
+                    json_str = json_str[:-1]  # Remove closing brace
+                    json_str += ',\n  "table_embeddings": [\n'
+                    
+                    for i, embedding in enumerate(embeddings):
+                        embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+                        json_str += f'    {json.dumps(embedding_list, ensure_ascii=False)}'
+                        if i < len(embeddings) - 1:
+                            json_str += ','
+                        json_str += '\n'
+                    
+                    json_str += '  ]\n}'
+                    f.write(json_str)
                 print("Saved database table metadata to database_table_metadata.json")
             except Exception as e:
                 print(f"Error saving JSON metadata: {e}")
