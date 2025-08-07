@@ -209,11 +209,6 @@ class FileProcessAgent:
             # Safely handle the case where upload_files_path might not exist in state
             existing_files = state.get("upload_files_path", [])
             existing_original_files = state.get("original_files_path", [])
-            print("detected_files_with_timestamps 类型: ", type(detected_files_with_timestamps))
-            print("existing_files 类型: ", type(existing_files))
-            print("existing_original_files 类型: ", type(existing_original_files))
-            print("processed_files_with_timestamps 类型: ", type(processed_files_with_timestamps))
-            print("original_files_with_timestamps 类型: ", type(original_files_with_timestamps))
             return {
                 "new_upload_files_path": detected_files_with_timestamps,
                 "upload_files_path": existing_files + detected_files_with_timestamps,
@@ -524,33 +519,11 @@ class FileProcessAgent:
             # ALWAYS use clean name without timestamp - no more timestamped files
             new_filename = f"{chinese_name}{file_extension}"
             dest_path = uploads_dir / new_filename
-            
-            # If this is a replacement, delete the old file first
-            if replacement_mode and old_file_path:
-                try:
-                    old_path = Path(old_file_path)
-                    if old_path.exists():
-                        os.chmod(str(old_path), stat.S_IWRITE)
-                        os.remove(old_path)
-                        print(f"🗑️ 已删除旧文件: {old_path.name}")
-                except Exception as e:
-                    print(f"⚠️ 删除旧文件失败: {e}")
-            
-            # If destination file already exists (even for new files), remove it first
-            # This handles cases where files exist but aren't tracked in JSON
-            if dest_path.exists():
-                try:
-                    os.chmod(str(dest_path), stat.S_IWRITE)
-                    os.remove(dest_path)
-                    print(f"🗑️ 已删除现有文件: {dest_path.name}")
-                except Exception as e:
-                    print(f"⚠️ 删除现有文件失败: {e}")
-            
-            # Copy file to new location with clean name
-            shutil.copy2(str(source_path), str(dest_path))
-            
-            action = "替换" if replacement_mode else "保存"
-            print(f"✅ 文件已{action}到: {dest_path.name} (无时间戳)")
+            print("source_path是什么: ", source_path)
+            os.chmod(source_path, stat.S_IWRITE)
+            shutil.copy(source_path, dest_path)
+
+            print(f"✅ 文件已保存到到: {dest_path.name} (无时间戳)")
             return str(dest_path)
             
         except Exception as e:

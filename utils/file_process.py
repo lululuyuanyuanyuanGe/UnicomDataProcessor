@@ -154,7 +154,7 @@ def save_original_file(source_path: Path, original_files_dir: Path) -> str:
         
         # Copy the original file to the original_file subfolder
         try:
-            shutil.copy2(source_path, original_file_path)
+            shutil.copy(source_path, original_file_path)
             print(f"Original file saved: {original_file_path}")
             return str(original_file_path)
         except Exception as e:
@@ -1468,53 +1468,6 @@ def check_file_exists_in_uploads(table_name: str) -> tuple[bool, str]:
     except (json.JSONDecodeError, FileNotFoundError) as e:
         print(f"⚠️ 读取uploaded_files.json失败: {e}")
         return False, ""
-
-
-
-def move_template_file_safely(source_file: str, dest_dir_name: str = "template_files") -> str:
-        """
-        Safely move a template file to the destination directory, handling existing files.
-        
-        This function ensures robust file handling by:
-        - Creating the destination directory if it doesn't exist
-        - Generating unique filenames when target files already exist (adds _1, _2, etc.)
-        - Gracefully handling move errors and maintaining original path as fallback
-        - Providing detailed logging of the process
-        
-        Args:
-            source_file: Path to the source file to be moved
-            dest_dir_name: Name of the destination directory under conversations/files/user_uploaded_files/
-            
-        Returns:
-            str: Path to the final file location (new path if moved successfully, original path if failed)
-        """
-        try:
-            dest_dir = Path(f"conversations/files/user_uploaded_files/{dest_dir_name}")
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            
-            source_file_path = Path(source_file)
-            target_file_path = dest_dir / source_file_path.name
-            
-            # Handle existing file case by deleting old file
-            if target_file_path.exists():
-                print(f"⚠️ 目标文件已存在: {target_file_path.name}")
-                try:
-                    target_file_path.unlink()  # Delete the existing file
-                    print(f"🗑️ 已删除旧文件: {target_file_path.name}")
-                except Exception as delete_error:
-                    print(f"❌ 删除旧文件失败: {delete_error}")
-                    # If we can't delete the old file, we can't proceed
-                    return source_file
-            
-            # Move the file
-            source_file_path.rename(target_file_path)
-            print(f"✅ 模板文件已移动到: {target_file_path}")
-            return str(target_file_path)
-            
-        except Exception as move_error:
-            print(f"❌ 移动模板文件失败: {move_error}")
-            print(f"⚠️ 保持原始文件路径: {source_file}")
-            return source_file
 
 
 def move_template_files_safely(processed_template_file: str, original_files_list: list[str], dest_dir_name: str = "template_files") -> dict[str, str]:
