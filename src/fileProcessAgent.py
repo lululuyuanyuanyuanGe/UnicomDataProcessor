@@ -16,7 +16,7 @@ import shutil
 from utils.modelRelated import invoke_model, invoke_model_with_screenshot, invoke_embedding_model
 from utils.file_process import (retrieve_file_content, save_original_file,
                                     extract_filename, 
-                                    ensure_location_structure, check_file_exists_in_data,
+                                    ensure_location_structure, check_file_exists_in_data, check_file_exists_in_uploads,
                                     get_available_locations, move_template_files_to_final_destination,
                                     move_supplement_files_to_final_destination, delete_files_from_staging_area,
                                     reconstruct_csv_with_headers, detect_and_process_file_paths,
@@ -31,6 +31,7 @@ from utils.table_processing_helpers import (
 )
 
 import json
+import re
 
 from langgraph.graph import StateGraph, END, START
 from langgraph.types import Send
@@ -54,6 +55,7 @@ class FileProcessState(TypedDict):
     irrelevant_files_path: list[dict]  # Store irrelevant files with timestamps
     irrelevant_original_files_path: list[dict] # Track original files to be deleted with irrelevant files with timestamps
     all_files_irrelevant: bool  # Flag to indicate all files are irrelevant
+    replacement_info: dict  # Store info about files being replaced: {file_path: (clean_name, old_file_path)}
     village_name: str
 
 
@@ -64,6 +66,18 @@ class FileProcessAgent:
         self._json_lock = threading.Lock()
         self.memory = MemorySaver()
         self.graph = self._build_graph().compile(checkpointer=self.memory)
+    
+    def get_clean_table_name(self, file_path: str) -> str:
+        """Extract clean table name from file path, removing timestamp suffixes"""
+        try:
+            filename = Path(file_path).stem
+            # Remove timestamp pattern like _20250807_162240
+            clean_name = re.sub(r'_\d{8}_\d{6}$', '', filename)
+            # Remove any trailing numbers
+            clean_name = re.sub(r'_?\d+$', '', clean_name)
+            return clean_name
+        except Exception:
+            return Path(file_path).stem
 
     def _build_graph(self):
         graph = StateGraph(FileProcessState)
@@ -106,6 +120,7 @@ class FileProcessAgent:
             "irrelevant_files_path": [],
             "irrelevant_original_files_path": [],
             "all_files_irrelevant": False,
+            "replacement_info": {},  # Store replacement information
             "template_complexity": "",
             "village_name": village_name
         }
@@ -121,31 +136,22 @@ class FileProcessAgent:
             detected_files = [file_entry["path"] for file_entry in detected_files_with_timestamps]
             print(f"📋 检测到 {len(detected_files)} 个文件")
             
-            # Load data.json with error handling
-            data_file = Path("data.json")
-            try:
-                with open(data_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except (FileNotFoundError, json.JSONDecodeError) as e:
-                print(f"⚠️ data.json文件出错: {e}")
-                # Initialize empty structure if file is missing or corrupted
-                data = {}
+            print("🔍 正在检查文件是否已存在于上传记录中...")
+            files_to_replace = []  # Files that need replacement
+            old_files_to_delete = []  # Old files to delete
             
-            print("🔍 正在检查文件是否已存在...")
-            files_to_remove = []
-            files_with_timestamps_to_remove = []
             for i, file in enumerate(detected_files):
-                file_name = Path(file).name
-                if check_file_exists_in_data(data, file_name):
-                    files_to_remove.append(file)
-                    files_with_timestamps_to_remove.append(detected_files_with_timestamps[i])
-                    print(f"⚠️ 文件 {file} 已存在")
+                clean_table_name = self.get_clean_table_name(file)
+                file_exists, old_file_path = check_file_exists_in_uploads(clean_table_name)
+                
+                if file_exists:
+                    files_to_replace.append((file, clean_table_name, old_file_path))
+                    print(f"🔄 文件将被替换: {clean_table_name} (原文件: {old_file_path})")
+                    if old_file_path and Path(old_file_path).exists():
+                        old_files_to_delete.append(old_file_path)
             
-            # Remove existing files from both lists
-            for file in files_to_remove:
-                detected_files.remove(file)
-            for file_entry in files_with_timestamps_to_remove:
-                detected_files_with_timestamps.remove(file_entry)
+            # Store replacement info for later use
+            replacement_info = {file: (clean_name, old_path) for file, clean_name, old_path in files_to_replace}
             
             if not detected_files:
                 print("⚠️ 没有新文件需要上传")
@@ -153,7 +159,8 @@ class FileProcessAgent:
                 print("=" * 50)
                 return {
                     "new_upload_files_path": [],
-                    "new_upload_files_processed_path": []
+                    "new_upload_files_processed_path": [],
+                    "replacement_info": {}
                 }
             
             print(f"🔄 正在处理 {len(detected_files)} 个新文件...")
@@ -209,7 +216,8 @@ class FileProcessAgent:
                 "new_upload_files_path": detected_files_with_timestamps,
                 "upload_files_path": existing_files + detected_files_with_timestamps,
                 "new_upload_files_processed_path": processed_files_with_timestamps,
-                "original_files_path": existing_original_files + original_files_with_timestamps
+                "original_files_path": existing_original_files + original_files_with_timestamps,
+                "replacement_info": replacement_info
             }
     
 
@@ -464,65 +472,18 @@ class FileProcessAgent:
         }
 
 
-    def append_table_data_to_json(self, file_name: str, headers: list[str], full_response: str, village_name: str):
-        """
-        Append table data to data.json file with proper structure
-        
-        Args:
-            file_name: Name of the table file
-            headers: List of extracted headers
-            full_response: Full LLM response with table structure
-            village_name: Village name for location-based organization
-        """
-        data_json_path = Path("data.json")
-        
-        # Load existing data or create empty structure
-        try:
-            if data_json_path.exists():
-                with open(data_json_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            else:
-                data = {}
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            print(f"⚠️ 读取data.json失败: {e}，创建新的数据结构")
-            data = {}
-        
-        # Ensure location structure exists
-        data = ensure_location_structure(data, village_name)
-        
-        # Create file key (remove extension)
-        file_key = Path(file_name).stem
-        
-        # Create new entry with extracted information
-        new_entry = {
-            "file_name": file_name,
-            "headers": headers,
-            "header_count": len(headers),
-            "llm_response": full_response,
-            "timestamp": datetime.now().isoformat(),
-            "extraction_method": "LLM_screenshot" if "Qwen2.5-VL" in str(full_response) else "text_parsing"
-        }
-
-        
-        # Add to tables section
-        data[village_name]["表格"][file_key] = new_entry
-        
-        # Save back to data.json
-        try:
-            with open(data_json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            print(f"✅ 已将 {file_name} 的表头信息保存到 data.json")
-            print(f"   - 文件: {file_name}")
-            print(f"   - 位置: {village_name}")
-            print(f"   - 表头数量: {len(headers)}")
-            if headers:
-                print(f"   - 表头样例: {', '.join(headers[:3])}{'...' if len(headers) > 3 else ''}")
-        except Exception as e:
-            print(f"❌ 保存到data.json失败: {e}")
+    # DISABLED: Uploaded files should not interact with data.json
+    # They should only be stored in src/uploaded_files.json
+    # def append_table_data_to_json(self, file_name: str, headers: list[str], full_response: str, village_name: str):
+    #     """
+    #     [DISABLED] Append table data to data.json file with proper structure
+    #     Uploaded files now only use src/uploaded_files.json
+    #     """
+    #     pass
     
     def load_uploaded_files_json(self) -> Dict:
         """Load existing uploaded_files.json file with thread safety"""
-        uploaded_files_json_path = Path("uploaded_files.json")
+        uploaded_files_json_path = Path("src/uploaded_files.json")
         
         with self._json_lock:
             try:
@@ -537,7 +498,7 @@ class FileProcessAgent:
 
     def save_uploaded_files_json(self, data: Dict):
         """Save data to uploaded_files.json file with thread safety"""
-        uploaded_files_json_path = Path("uploaded_files.json")
+        uploaded_files_json_path = Path("src/uploaded_files.json")
         
         with self._json_lock:
             try:
@@ -547,8 +508,8 @@ class FileProcessAgent:
             except Exception as e:
                 print(f"❌ 保存uploaded_files.json失败: {e}")
 
-    def save_original_file_to_uploads(self, file_path: str, chinese_name: str) -> str:
-        """Move original file to uploaded_files/ directory with Chinese name + timestamp"""
+    def save_original_file_to_uploads(self, file_path: str, chinese_name: str, replacement_mode: bool = False, old_file_path: str = "") -> str:
+        """Move original file to uploaded_files/ directory with Chinese name, handling replacements"""
         try:
             source_path = Path(file_path)
             
@@ -556,18 +517,42 @@ class FileProcessAgent:
             uploads_dir = Path("uploaded_files")
             uploads_dir.mkdir(exist_ok=True)
             
-            # Generate filename with Chinese name and timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             file_extension = source_path.suffix
-            new_filename = f"{chinese_name}_{timestamp}{file_extension}"
+            
+            if replacement_mode and old_file_path:
+                # Delete old file first
+                try:
+                    old_path = Path(old_file_path)
+                    if old_path.exists():
+                        old_path.unlink()
+                        print(f"🗑️ 已删除旧文件: {old_path.name}")
+                except Exception as e:
+                    print(f"⚠️ 删除旧文件失败: {e}")
+                
+                # Use clean name without timestamp for replacement
+                new_filename = f"{chinese_name}{file_extension}"
+            else:
+                # For new files, still use timestamp to avoid conflicts during processing
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                new_filename = f"{chinese_name}_{timestamp}{file_extension}"
             
             # Create destination path
             dest_path = uploads_dir / new_filename
             
+            # If destination already exists (shouldn't happen with our logic), add suffix
+            counter = 1
+            original_dest = dest_path
+            while dest_path.exists():
+                stem = original_dest.stem
+                suffix = original_dest.suffix
+                dest_path = original_dest.parent / f"{stem}_{counter}{suffix}"
+                counter += 1
+            
             # Copy file to new location
             shutil.copy2(str(source_path), str(dest_path))
             
-            print(f"✅ 文件已移动到: {dest_path}")
+            action = "替换" if replacement_mode else "移动"
+            print(f"✅ 文件已{action}到: {dest_path}")
             return str(dest_path)
             
         except Exception as e:
@@ -667,7 +652,26 @@ class FileProcessAgent:
             # Move original file to uploaded_files directory
             new_file_path = ""
             if original_excel_file:
-                new_file_path = self.save_original_file_to_uploads(str(original_excel_file), chinese_table_name)
+                # Check if this is a replacement operation
+                replacement_info = state.get("replacement_info", {})
+                original_file_key = None
+                replacement_mode = False
+                old_file_path = ""
+                
+                # Find if this file is being replaced
+                for file_key, (clean_name, old_path) in replacement_info.items():
+                    if Path(file_key).stem == table_file_stem:
+                        original_file_key = file_key
+                        replacement_mode = True
+                        old_file_path = old_path
+                        break
+                
+                new_file_path = self.save_original_file_to_uploads(
+                    str(original_excel_file), 
+                    chinese_table_name, 
+                    replacement_mode=replacement_mode, 
+                    old_file_path=old_file_path
+                )
             
             # Generate table description for embedding
             table_description = create_table_description(chinese_table_name, headers)

@@ -1439,6 +1439,38 @@ def check_file_exists_in_data(data: dict, file_name: str) -> bool:
     return False
 
 
+def check_file_exists_in_uploads(table_name: str) -> tuple[bool, str]:
+    """
+    检查文件是否已存在于uploaded_files.json中
+    
+    Args:
+        table_name: 表格名称 (清理后的名称，不含时间戳)
+        
+    Returns:
+        tuple: (是否存在, 原文件路径) - 如果存在返回原文件路径用于删除
+    """
+    import json
+    from pathlib import Path
+    
+    uploaded_files_json_path = Path("src/uploaded_files.json")
+    
+    try:
+        if uploaded_files_json_path.exists():
+            with open(uploaded_files_json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 检查表格名是否已存在
+            if table_name in data:
+                original_file_path = data[table_name].get("original_file_path", "")
+                return True, original_file_path
+        
+        return False, ""
+        
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        print(f"⚠️ 读取uploaded_files.json失败: {e}")
+        return False, ""
+
+
 
 def move_template_file_safely(source_file: str, dest_dir_name: str = "template_files") -> str:
         """
