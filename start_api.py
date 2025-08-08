@@ -16,13 +16,13 @@ from api.main import app
 
 def main():
     """Start the API server"""
-    print("🚀 Starting Asian Information Data Processor API...")
-    print(f"📁 Project root: {project_root}")
-    print("🌐 Server will be available at:")
-    print("   • API: http://localhost:8000")
-    print("   • Docs: http://localhost:8000/docs")
-    print("   • Health: http://localhost:8000/api/health")
-    print("\n⏹️  Press Ctrl+C to stop the server")
+    print("Starting Asian Information Data Processor API...")
+    print(f"Project root: {project_root}")
+    print("Server will be available at:")
+    print("   - API: http://localhost:8000")
+    print("   - Docs: http://localhost:8000/docs")
+    print("   - Health: http://localhost:8000/api/health")
+    print("\nPress Ctrl+C to stop the server")
     print("=" * 50)
     
     # Start the server

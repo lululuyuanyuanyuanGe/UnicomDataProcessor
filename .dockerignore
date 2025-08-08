@@ -1,1 +1,14 @@
+.git
+.venv
 __pycache__/
+*.pyc
+.env
+.pytest_cache
+.idea/
+*.log
+data/
+temp/
+uploaded_files/
+embedded_tables/
+node_modules/
+.DS_Store

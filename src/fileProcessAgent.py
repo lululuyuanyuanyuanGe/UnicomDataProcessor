@@ -19,7 +19,7 @@ from utils.modelRelated import invoke_model_with_screenshot
 from utils.file_process import (    delete_files_from_staging_area,
                                     detect_and_process_file_paths,
                                     analyze_single_file)
-from similarity_calculation import TableSimilarityCalculator
+from src.similarity_calculation import TableSimilarityCalculator
 from utils.table_processing_helpers import (
     extract_headers_from_response, 
     extract_headers_from_txt_content,

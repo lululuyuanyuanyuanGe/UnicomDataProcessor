@@ -19,14 +19,14 @@ async def test_health_endpoint():
             async with session.get("http://localhost:8000/api/health") as response:
                 if response.status == 200:
                     data = await response.json()
-                    print(f"✅ Health check passed: {data['status']}")
+                    print(f"Health check passed: {data['status']}")
                     print(f"   Services: {data['services']}")
                     return True
                 else:
-                    print(f"❌ Health check failed: {response.status}")
+                    print(f"Health check failed: {response.status}")
                     return False
         except Exception as e:
-            print(f"❌ Failed to connect to API: {e}")
+            print(f"Failed to connect to API: {e}")
             return False
 
 
@@ -113,7 +113,7 @@ async def test_file_processing():
             data.add_field(
                 'files',
                 sample_csv_content.encode('utf-8'),
-                filename='test_table.csv',
+                filename='"D:\asianInfo\ExcelAssist\燕云村case\村委助手智填样例(1)\燕云村残疾人补贴\燕云村残疾人名单.xlsx"',
                 content_type='text/csv'
             )
             
@@ -141,14 +141,14 @@ async def test_file_processing():
 
 async def main():
     """Run all API tests"""
-    print("🚀 Starting API tests for Asian Information Data Processor")
+    print("Starting API tests for Asian Information Data Processor")
     print("=" * 60)
     
     # Test health endpoint first
     health_ok = await test_health_endpoint()
     
     if not health_ok:
-        print("\n❌ API is not running. Please start the API server first:")
+        print("\nAPI is not running. Please start the API server first:")
         print("   python -m uvicorn api.main:app --host 0.0.0.0 --port 8000")
         return
     
@@ -159,16 +159,16 @@ async def main():
     await test_file_processing()
     
     # Test database vectorization (optional, takes longer)
-    print("\n🔍 Would you like to test database vectorization? (This may take several minutes)")
+    print("\nWould you like to test database vectorization? (This may take several minutes)")
     print("   This will update database embeddings...")
     # For automated testing, we'll skip this for now
     print("   Skipping database vectorization test (uncomment to enable)")
     # await test_database_vectorization()
     
     print("\n" + "=" * 60)
-    print("🎉 API tests completed!")
-    print("\n📖 API Documentation available at: http://localhost:8000/docs")
-    print("📘 Alternative docs at: http://localhost:8000/redoc")
+    print("API tests completed!")
+    print("\nAPI Documentation available at: http://localhost:8000/docs")
+    print("Alternative docs at: http://localhost:8000/redoc")
 
 
 if __name__ == "__main__":

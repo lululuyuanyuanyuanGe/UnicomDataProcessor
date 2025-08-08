@@ -1,12 +1,13 @@
 version: '3.8'
 
 services:
-  dataprocessor-api:
+  fileprocessor-api:
+    image: luluyuanyuanyuan/fileprocessor-api:1.0.0
     build: .
     ports:
       - "8000:8000"
     environment:
-      # Copy these values from your .env file or set them directly
+      # Database and API configuration
       - CHAT_BI_ADDR=${CHAT_BI_ADDR}
       - CHAT_BI_PORT=${CHAT_BI_PORT:-3306}
       - CHAT_BI_USER=${CHAT_BI_USER}
@@ -14,11 +15,19 @@ services:
       - CHAT_BI_DB=${CHAT_BI_DB}
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
-      # Persist uploaded files and embeddings
-      - ./uploaded_files:/app/uploaded_files
-      - ./embedded_tables:/app/embedded_tables
-      - ./src/uploaded_files.json:/app/src/uploaded_files.json
-      - ./src/data.json:/app/src/data.json
+      # Volume mounts for file access (MAIN DATA DIRECTORIES)
+      # Map host data directories to container paths
+      # Adjust these paths according to your server setup
+      - ${HOST_DATA_PATH:-/host/data}                 # Main data directory
+
+      # Application persistence (keep these)
+      - ./uploaded_files:/app/uploaded_files                   # Processed files storage
+      - ./embedded_tables:/app/embedded_tables                 # Database embeddings
+      - ./src/uploaded_files.json:/app/src/uploaded_files.json # File metadata
+      - ./src/data.json:/app/src/data.json                     # Application data
+      
+      # Temporary storage (optional, for better performance)
+      - ./temp:/app/temp                                       # Temp processing files
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]

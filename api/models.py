@@ -6,11 +6,17 @@ from datetime import datetime
 # Request Models
 class FileProcessRequest(BaseModel):
     """Request model for file processing endpoint"""
+    file_paths: List[str] = Field(..., description="List of file paths to process")
     village_name: Optional[str] = Field(default="", description="Village name (optional)")
     
     class Config:
         json_schema_extra = {
             "example": {
+                "file_paths": [
+                    "/data/燕云村残疾人名单.xlsx",
+                    "/data/村民信息表.csv",
+                    "/uploads/财务报表.xlsx"
+                ],
                 "village_name": "燕云村"
             }
         }
@@ -51,9 +57,10 @@ class FileProcessResponse(BaseModel):
     """Response model for file processing endpoint"""
     session_id: str
     status: ProcessingStatus
-    processed_files: List[str] = Field(default_factory=list)
-    table_files: List[TableInfo] = Field(default_factory=list)
-    irrelevant_files: List[str] = Field(default_factory=list)
+    input_files: List[str] = Field(default_factory=list, description="Original input file paths")
+    processed_files: List[str] = Field(default_factory=list, description="Successfully processed file paths")
+    table_files: List[TableInfo] = Field(default_factory=list, description="Files identified as tables")
+    irrelevant_files: List[str] = Field(default_factory=list, description="Files identified as irrelevant")
     summary: Dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.now)
     
@@ -66,7 +73,8 @@ class FileProcessResponse(BaseModel):
                     "message": "Successfully processed 3 files",
                     "progress": 100
                 },
-                "processed_files": ["file1.xlsx", "file2.csv"],
+                "input_files": ["/data/file1.xlsx", "/data/file2.csv", "/data/readme.txt"],
+                "processed_files": ["/data/file1.xlsx", "/data/file2.csv"],
                 "table_files": [{
                     "chinese_table_name": "燕云村残疾人名单",
                     "english_table_name": "disability_list",
@@ -74,7 +82,7 @@ class FileProcessResponse(BaseModel):
                     "header_count": 3,
                     "similarity_scores": []
                 }],
-                "irrelevant_files": ["readme.txt"],
+                "irrelevant_files": ["/data/readme.txt"],
                 "summary": {
                     "total_files": 3,
                     "tables_found": 2,

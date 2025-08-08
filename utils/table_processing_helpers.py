@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 def extract_headers_from_response(response: str) -> list[str]:

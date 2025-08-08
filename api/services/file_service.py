@@ -4,9 +4,6 @@ import uuid
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import tempfile
-import os
-import shutil
 import logging
 
 # Add project root to Python path
@@ -20,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class FileProcessingService:
-    """Service for handling file processing operations"""
+    """Service for handling file processing operations with direct file paths"""
     
     def __init__(self):
         self.agent = FileProcessAgent()
@@ -28,16 +25,14 @@ class FileProcessingService:
     
     async def process_files(
         self,
-        uploaded_files: List[bytes],
-        filenames: List[str],
+        file_paths: List[str],
         village_name: Optional[str] = ""
     ) -> FileProcessResponse:
         """
-        Process uploaded files using the existing FileProcessAgent
+        Process files using direct file paths (Docker volume mount approach)
         
         Args:
-            uploaded_files: List of file contents as bytes
-            filenames: List of original filenames
+            file_paths: List of validated file paths that exist on the filesystem
             village_name: Optional village name parameter
             
         Returns:
@@ -47,55 +42,48 @@ class FileProcessingService:
         
         try:
             logger.info(f"Starting file processing session: {session_id}")
+            logger.info(f"Processing {len(file_paths)} files: {[Path(p).name for p in file_paths]}")
             
             # Update session status
             self.active_sessions[session_id] = {
                 "status": "processing",
                 "start_time": datetime.now(),
-                "total_files": len(uploaded_files)
+                "total_files": len(file_paths),
+                "input_files": file_paths.copy()
             }
             
-            # Save uploaded files to temporary directory
-            temp_dir = Path(tempfile.mkdtemp())
-            saved_file_paths = []
+            # Validate all files exist (should already be validated, but double-check)
+            validated_paths = []
+            for file_path in file_paths:
+                path = Path(file_path)
+                if not path.exists():
+                    logger.error(f"File not found during processing: {file_path}")
+                    continue
+                validated_paths.append(str(path.resolve()))
             
-            try:
-                for file_content, filename in zip(uploaded_files, filenames):
-                    # Save file to temporary location
-                    temp_file_path = temp_dir / filename
-                    with open(temp_file_path, 'wb') as f:
-                        f.write(file_content)
-                    saved_file_paths.append(str(temp_file_path))
-                    logger.info(f"Saved uploaded file: {filename}")
+            if not validated_paths:
+                raise ValueError("No valid files found for processing")
+            
+            # Process files using existing FileProcessAgent directly
+            logger.info("Invoking FileProcessAgent with direct file paths...")
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._run_file_processing,
+                session_id,
+                validated_paths,
+                village_name or ""
+            )
+            
+            # Parse and format results
+            response = self._format_response(session_id, result, file_paths, validated_paths)
+            
+            # Update session status
+            self.active_sessions[session_id]["status"] = "completed"
+            self.active_sessions[session_id]["end_time"] = datetime.now()
+            
+            logger.info(f"File processing completed for session: {session_id}")
+            return response
                 
-                # Process files using existing FileProcessAgent
-                logger.info("Invoking FileProcessAgent...")
-                result = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    self._run_file_processing,
-                    session_id,
-                    saved_file_paths,
-                    village_name or ""
-                )
-                
-                # Parse and format results
-                response = self._format_response(session_id, result, saved_file_paths)
-                
-                # Update session status
-                self.active_sessions[session_id]["status"] = "completed"
-                self.active_sessions[session_id]["end_time"] = datetime.now()
-                
-                logger.info(f"File processing completed for session: {session_id}")
-                return response
-                
-            finally:
-                # Clean up temporary files
-                try:
-                    shutil.rmtree(temp_dir)
-                    logger.info(f"Cleaned up temporary directory: {temp_dir}")
-                except Exception as cleanup_error:
-                    logger.warning(f"Failed to clean up temp directory: {cleanup_error}")
-        
         except Exception as e:
             logger.error(f"File processing failed for session {session_id}: {e}", exc_info=True)
             
@@ -103,7 +91,8 @@ class FileProcessingService:
             self.active_sessions[session_id] = {
                 "status": "failed",
                 "error": str(e),
-                "end_time": datetime.now()
+                "end_time": datetime.now(),
+                "input_files": file_paths.copy()
             }
             
             return FileProcessResponse(
@@ -113,29 +102,34 @@ class FileProcessingService:
                     message=f"Processing failed: {str(e)}",
                     progress=0
                 ),
+                input_files=file_paths,
                 summary={"error": str(e)}
             )
     
     def _run_file_processing(self, session_id: str, file_paths: List[str], village_name: str) -> Dict:
         """
-        Run the file processing agent synchronously
+        Run the file processing agent synchronously with direct file paths
         
         Args:
             session_id: Processing session ID
-            file_paths: List of file paths to process
+            file_paths: List of validated file paths to process
             village_name: Village name parameter
             
         Returns:
             Processing result dictionary
         """
         try:
-            # Use the existing FileProcessAgent
+            logger.info(f"FileProcessAgent processing {len(file_paths)} files")
+            
+            # Use the existing FileProcessAgent directly with file paths
+            # The FileProcessAgent expects a list of file paths, not file contents
             result = self.agent.run_file_process_agent(
                 session_id=session_id,
-                upload_files_path=file_paths,
+                upload_files_path=file_paths,  # Direct file paths
                 village_name=village_name
             )
             
+            logger.info("FileProcessAgent completed successfully")
             return {
                 "success": True,
                 "result": result,
@@ -154,7 +148,8 @@ class FileProcessingService:
         self,
         session_id: str,
         agent_result: Dict,
-        original_file_paths: List[str]
+        original_file_paths: List[str],
+        validated_file_paths: List[str]
     ) -> FileProcessResponse:
         """
         Format the FileProcessAgent result into API response format
@@ -162,7 +157,8 @@ class FileProcessingService:
         Args:
             session_id: Processing session ID
             agent_result: Result from FileProcessAgent
-            original_file_paths: Original uploaded file paths
+            original_file_paths: Original input file paths
+            validated_file_paths: Validated file paths that were processed
             
         Returns:
             Formatted FileProcessResponse
@@ -175,7 +171,8 @@ class FileProcessingService:
                         status="failed",
                         message=agent_result.get("error", "Unknown error"),
                         progress=0
-                    )
+                    ),
+                    input_files=original_file_paths
                 )
             
             # Extract information from agent result
@@ -188,29 +185,27 @@ class FileProcessingService:
             
             # Check if we have the final state data
             if isinstance(result_data, dict):
-                # Extract table information
-                table_files_data = result_data.get("table_files_path", [])
-                for table_entry in table_files_data:
-                    if isinstance(table_entry, dict):
-                        # Try to extract table info from processed results
+                # Extract table information from processed results
+                processed_table_results = result_data.get("processed_table_results", [])
+                for table_entry in processed_table_results:
+                    if isinstance(table_entry, dict) and table_entry.get("success", False):
                         table_info = TableInfo(
-                            chinese_table_name=self._extract_table_name(table_entry),
-                            headers=self._extract_headers(table_entry),
-                            header_count=len(self._extract_headers(table_entry))
+                            chinese_table_name=table_entry.get("chinese_table_name", "Unknown"),
+                            headers=table_entry.get("headers", []),
+                            header_count=len(table_entry.get("headers", [])),
+                            similarity_scores=self._extract_similarity_scores(table_entry)
                         )
                         table_files.append(table_info)
+                        
+                        # Add to processed files
+                        file_path = table_entry.get("file_path", "")
+                        if file_path:
+                            processed_files.append(file_path)
                 
-                # Extract processed and irrelevant files
-                processed_files_data = result_data.get("new_upload_files_processed_path", [])
+                # Extract irrelevant files
                 irrelevant_files_data = result_data.get("irrelevant_files_path", [])
-                
-                processed_files = [
-                    Path(f.get("path", "") if isinstance(f, dict) else str(f)).name
-                    for f in processed_files_data
-                ]
-                
                 irrelevant_files = [
-                    Path(f.get("path", "") if isinstance(f, dict) else str(f)).name
+                    f.get("path", "") if isinstance(f, dict) else str(f)
                     for f in irrelevant_files_data
                 ]
             
@@ -230,6 +225,7 @@ class FileProcessingService:
                     message=f"Successfully processed {len(original_file_paths)} files",
                     progress=100
                 ),
+                input_files=original_file_paths,
                 processed_files=processed_files,
                 table_files=table_files,
                 irrelevant_files=irrelevant_files,
@@ -245,22 +241,18 @@ class FileProcessingService:
                     message=f"Failed to format response: {str(e)}",
                     progress=0
                 ),
+                input_files=original_file_paths,
                 summary={"error": str(e)}
             )
     
-    def _extract_table_name(self, table_entry: Dict) -> str:
-        """Extract table name from table entry"""
-        if isinstance(table_entry, dict):
-            path = table_entry.get("path", "")
-            if path:
-                return Path(path).stem
-        return "Unknown Table"
-    
-    def _extract_headers(self, table_entry: Dict) -> List[str]:
-        """Extract headers from table entry"""
-        # This is a placeholder - the actual headers would come from
-        # the processed table data in the FileProcessAgent result
-        return []
+    def _extract_similarity_scores(self, table_entry: Dict) -> Optional[List[Dict[str, Any]]]:
+        """Extract similarity scores from table entry"""
+        similarity_match = table_entry.get("similarity_match", {})
+        if isinstance(similarity_match, dict):
+            top_matches = similarity_match.get("top_matches", [])
+            if top_matches:
+                return top_matches
+        return None
     
     def get_session_status(self, session_id: str) -> Optional[Dict]:
         """Get the status of a processing session"""
