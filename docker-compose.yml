@@ -18,7 +18,7 @@ services:
       # Volume mounts for file access (MAIN DATA DIRECTORIES)
       # Map host data directories to container paths
       # Adjust these paths according to your server setup
-      - ${HOST_DATA_PATH:-/host/data}                 # Main data directory
+      - ${HOST_FILES_PATH}:/temp                 # Main data directory
 
       # Application persistence (keep these)
       - ./uploaded_files:/app/uploaded_files                   # Processed files storage

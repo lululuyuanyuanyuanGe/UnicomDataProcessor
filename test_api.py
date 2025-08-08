@@ -113,7 +113,7 @@ async def test_file_processing():
             data.add_field(
                 'files',
                 sample_csv_content.encode('utf-8'),
-                filename='"D:\asianInfo\ExcelAssist\燕云村case\村委助手智填样例(1)\燕云村残疾人补贴\燕云村残疾人名单.xlsx"',
+                filename="D:\asianInfo\dataProcessor\temp_files\燕云村残疾人名单.xlsx",
                 content_type='text/csv'
             )
             
