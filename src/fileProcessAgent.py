@@ -16,13 +16,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import shutil
 from utils.modelRelated import invoke_model, invoke_model_with_screenshot, invoke_embedding_model
-from utils.file_process import (retrieve_file_content, save_original_file,
-                                    extract_filename, 
-                                    ensure_location_structure, check_file_exists_in_data, check_file_exists_in_uploads,
-                                    get_available_locations, move_template_files_to_final_destination,
-                                    move_supplement_files_to_final_destination, delete_files_from_staging_area,
-                                    reconstruct_csv_with_headers, detect_and_process_file_paths,
-                                    analyze_single_file, process_files_concurrently)
+from utils.file_process import (    delete_files_from_staging_area,
+                                    detect_and_process_file_paths,
+                                    analyze_single_file)
 from similarity_calculation import TableSimilarityCalculator
 from utils.table_processing_helpers import (
     extract_headers_from_response, 
@@ -68,18 +64,6 @@ class FileProcessAgent:
         self._json_lock = threading.Lock()
         self.memory = MemorySaver()
         self.graph = self._build_graph().compile(checkpointer=self.memory)
-    
-    def get_clean_table_name(self, file_path: str) -> str:
-        """Extract clean table name from file path, removing timestamp suffixes"""
-        try:
-            filename = Path(file_path).stem
-            # Remove timestamp pattern like _20250807_162240
-            clean_name = re.sub(r'_\d{8}_\d{6}$', '', filename)
-            # Remove any trailing numbers
-            clean_name = re.sub(r'_?\d+$', '', clean_name)
-            return clean_name
-        except Exception:
-            return Path(file_path).stem
 
     def _build_graph(self):
         graph = StateGraph(FileProcessState)
@@ -133,64 +117,16 @@ class FileProcessAgent:
         print("=" * 50)
         
         print("📁 正在检测用户输入中的文件路径...")
-        detected_files_with_timestamps = state["upload_files_path"]
-        detected_files = [file_entry["path"] for file_entry in detected_files_with_timestamps]
-        print(f"📋 检测到 {len(detected_files)} 个文件")
+        uploaded_files_path = state["upload_files_path"]
+        print(f"📋 检测到 {len(uploaded_files_path)} 个文件")
         
-        print("🔍 正在检查文件是否已存在于上传记录中...")
-        files_to_replace = []
-        old_files_to_delete = []
+        # The file upload logic should be very simple, for each file in the uploaded_files_path, we concurrently process then, first use
+        # copy the file into the the temp folder, then call the helper function retrieve_file_content which convert the table files into csv format,
+        # and docx or doc file into plain text, both of the them should also be stored under the temp folder with the txt extension
         
-        for file in detected_files:
-            clean_table_name = self.get_clean_table_name(file)
-            file_exists, old_file_path = check_file_exists_in_uploads(clean_table_name)
-            
-            if file_exists:
-                files_to_replace.append((file, clean_table_name, old_file_path))
-                print(f"🔄 文件将被替换: {clean_table_name} (原文件: {old_file_path})")
-                if old_file_path and Path(old_file_path).exists():
-                    old_files_to_delete.append(old_file_path)
         
-        replacement_info = {file: (clean_name, old_path) for file, clean_name, old_path in files_to_replace}
         
-        if not detected_files:
-            print("⚠️ 没有新文件需要上传")
-            print("✅ _file_upload 执行完成")
-            print("=" * 50)
-            return {
-                "new_upload_files_path": [],
-                "new_upload_files_processed_path": [],
-                "replacement_info": {}
-            }
-        
-        print(f"🔄 正在并发处理 {len(detected_files)} 个新文件...")
-        
-        # Create staging area
-        project_root = Path.cwd()
-        staging_dir = project_root / "temp"
-        staging_dir.mkdir(parents=True, exist_ok=True)
-        
-        current_timestamp = datetime.now().isoformat()
-        
-        # Concurrent file processing
-        processed_files, original_files, original_files_with_timestamps = process_files_concurrently(
-            detected_files, staging_dir, current_timestamp
-        )
-        
-        # Create processed files with timestamps
-        processed_files_with_timestamps = [
-            {"path": file_path, "timestamp": current_timestamp}
-            for file_path in processed_files
-        ]
-        
-        print(f"✅ 文件处理完成: {len(processed_files)} 个处理文件, {len(original_files)} 个原始文件")
-        print("✅ _file_upload 执行完成")
-        print("=" * 50)
-        
-        # Update state
-        existing_files = state.get("upload_files_path", [])
-        existing_original_files = state.get("original_files_path", [])
-        
+
         return {
             "new_upload_files_path": detected_files_with_timestamps,
             "upload_files_path": existing_files + detected_files_with_timestamps,
