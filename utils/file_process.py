@@ -66,6 +66,7 @@ def _log_existence(path: str, container: list):
 
 
 def process_file_to_text(file_path: str | Path) -> str | None:
+    # This function should concurrently process all the uploaded files, and get the txt format, and saved them inside the temp folder
     """
     Efficiently process a file to readable text content in memory.
     
@@ -142,7 +143,7 @@ def _read_text_auto(path: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 def _process_spreadsheet():
-    # This function should use pandas that convertts the excel to html or csv format, then save them inside the txt file with the same
+    # This function should use pandas that convertts the excel to csv format, then save them inside the txt file with the same
     # file name but txt suffix under the temp folder
     pass
 
