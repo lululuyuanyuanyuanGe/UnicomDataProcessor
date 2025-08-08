@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  dataprocessor-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Copy these values from your .env file or set them directly
+      - CHAT_BI_ADDR=${CHAT_BI_ADDR}
+      - CHAT_BI_PORT=${CHAT_BI_PORT:-3306}
+      - CHAT_BI_USER=${CHAT_BI_USER}
+      - CHAT_BI_PASSWORD=${CHAT_BI_PASSWORD}
+      - CHAT_BI_DB=${CHAT_BI_DB}
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+    volumes:
+      # Persist uploaded files and embeddings
+      - ./uploaded_files:/app/uploaded_files
+      - ./embedded_tables:/app/embedded_tables
+      - ./src/uploaded_files.json:/app/src/uploaded_files.json
+      - ./src/data.json:/app/src/data.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dataprocessor-network
+
+networks:
+  dataprocessor-network:
+    driver: bridge
