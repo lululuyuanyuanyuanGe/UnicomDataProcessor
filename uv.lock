@@ -125,6 +125,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cobble"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/7a/a507c709be2c96e1bb6102eb7b7f4026c5e5e223ef7d745a17d239e9d844/cobble-0.1.4.tar.gz", hash = "sha256:de38be1539992c8a06e569630717c485a5f91be2192c461ea2b220607dfa78aa", size = 3805, upload-time = "2024-06-01T18:11:09.528Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/e1/3714a2f371985215c219c2a70953d38e3eed81ef165aed061d21de0e998b/cobble-0.1.4-py3-none-any.whl", hash = "sha256:36c91b1655e599fd428e2b95fdd5f0da1ca2e9f1abb0bc871dec21a0e78a2b44", size = 3984, upload-time = "2024-06-01T18:11:07.911Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -145,6 +154,7 @@ dependencies = [
     { name = "langchain" },
     { name = "langchain-openai" },
     { name = "langgraph" },
+    { name = "mammoth" },
     { name = "mysql" },
     { name = "numpy" },
     { name = "openpyxl" },
@@ -152,6 +162,7 @@ dependencies = [
     { name = "pillow" },
     { name = "psutil" },
     { name = "scikit-learn" },
+    { name = "xlrd" },
     { name = "xlwings" },
 ]
 
@@ -164,6 +175,7 @@ requires-dist = [
     { name = "langchain", specifier = ">=0.3.27" },
     { name = "langchain-openai", specifier = ">=0.3.28" },
     { name = "langgraph", specifier = ">=0.6.3" },
+    { name = "mammoth", specifier = ">=1.8.0" },
     { name = "mysql", specifier = ">=0.0.3" },
     { name = "numpy", specifier = ">=2.3.2" },
     { name = "openpyxl", specifier = ">=3.1.5" },
@@ -171,6 +183,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "psutil", specifier = ">=7.0.0" },
     { name = "scikit-learn", specifier = ">=1.7.1" },
+    { name = "xlrd", specifier = ">=2.0.2" },
     { name = "xlwings", specifier = ">=0.33.15" },
 ]
 
@@ -483,6 +496,18 @@ sdist = { url = "https://files.pythonhosted.org/packages/c5/ed/60eb6fa2923602fba
 wheels = [
     { url = "https://files.pythonhosted.org/packages/79/21/6e7c060822a3c954ff085e5e1b94b4a25757c06529eac91e550f3f5cd8b8/lxml-6.0.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:6da7cd4f405fd7db56e51e96bff0865b9853ae70df0e6720624049da76bde2da", size = 8414372, upload-time = "2025-06-26T16:26:39.079Z" },
     { url = "https://files.pythonhosted.org/packages/a4/f6/051b1607a459db670fc3a244fa4f06f101a8adf86cda263d1a56b3a4f9d5/lxml-6.0.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:b34339898bb556a2351a1830f88f751679f343eabf9cf05841c95b165152c9e7", size = 4593940, upload-time = "2025-06-26T16:26:41.891Z" },
+]
+
+[[package]]
+name = "mammoth"
+version = "1.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cobble" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/89/0d/2ab86f37021b4c50fe72354acd226b1e31a10497e51f6cbd7e3d1eca1181/mammoth-1.10.0.tar.gz", hash = "sha256:cb6fbba41ccf8b5502859c457177d87a833fef0e0b1d4e6fd23ec372fe892c30", size = 52285, upload-time = "2025-08-02T15:40:55.849Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/67/36eeb3a8726df3b282ba99ec126323871cffdbcf3b7a1db64ca9bbe4abc1/mammoth-1.10.0-py2.py3-none-any.whl", hash = "sha256:a1c87d5b98ca30230394267f98614b58b14b50f8031dc33ac9a535c6ab04eb99", size = 53823, upload-time = "2025-08-02T15:40:54.255Z" },
 ]
 
 [[package]]
@@ -1124,6 +1149,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/15/22/9ee70a2574a4f4599c47dd506532914ce044817c7752a79b6a51286319bc/urllib3-2.5.0.tar.gz", hash = "sha256:3fc47733c7e419d4bc3f6b3dc2b4f890bb743906a30d56ba4a5bfa4bbff92760", size = 393185, upload-time = "2025-06-18T14:07:41.644Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/c2/fe1e52489ae3122415c51f387e221dd0773709bad6c6cdaa599e8a2c5185/urllib3-2.5.0-py3-none-any.whl", hash = "sha256:e6b01673c0fa6a13e374b50871808eb3bf7046c4b125b216f6bf1cc604cff0dc", size = 129795, upload-time = "2025-06-18T14:07:40.39Z" },
+]
+
+[[package]]
+name = "xlrd"
+version = "2.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/5a/377161c2d3538d1990d7af382c79f3b2372e880b65de21b01b1a2b78691e/xlrd-2.0.2.tar.gz", hash = "sha256:08b5e25de58f21ce71dc7db3b3b8106c1fa776f3024c54e45b45b374e89234c9", size = 100167, upload-time = "2025-06-14T08:46:39.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/62/c8d562e7766786ba6587d09c5a8ba9f718ed3fa8af7f4553e8f91c36f302/xlrd-2.0.2-py2.py3-none-any.whl", hash = "sha256:ea762c3d29f4cca48d82df517b6d89fbce4db3107f9d78713e48cd321d5c9aa9", size = 96555, upload-time = "2025-06-14T08:46:37.766Z" },
 ]
 
 [[package]]

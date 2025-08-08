@@ -120,20 +120,84 @@ class FileProcessAgent:
         uploaded_files_path = state["upload_files_path"]
         print(f"📋 检测到 {len(uploaded_files_path)} 个文件")
         
-        # The file upload logic should be very simple, for each file in the uploaded_files_path, we concurrently process then, first use
-        # copy the file into the the temp folder, then call the helper function retrieve_file_content which convert the table files into csv format,
-        # and docx or doc file into plain text, both of the them should also be stored under the temp folder with the txt extension
+        if not uploaded_files_path:
+            print("⚠️ 没有文件需要上传")
+            print("✅ _file_upload 执行完成")
+            print("=" * 50)
+            return {
+                "new_upload_files_path": [],
+                "new_upload_files_processed_path": []
+            }
         
+        # Extract file paths from the dictionary structure
+        file_paths = [file_entry["path"] for file_entry in uploaded_files_path]
         
+        # Create staging area (temp folder)
+        project_root = Path.cwd()
+        temp_dir = project_root / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
         
+        print(f"🚀 开始并发处理 {len(file_paths)} 个文件...")
+        
+        # Process files concurrently for LLM analysis
+        processed_files = []
+        max_workers = min(len(file_paths), 5)  # Limit concurrent processing
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all file processing tasks
+            future_to_file = {
+                executor.submit(self._process_single_file_for_llm, file_path): file_path
+                for file_path in file_paths
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_file):
+                file_path = future_to_file[future]
+                try:
+                    processed_file_path = future.result()
+                    if processed_file_path:
+                        processed_files.append(processed_file_path)
+                        print(f"✅ 文件处理完成: {Path(file_path).name} -> {Path(processed_file_path).name}")
+                    else:
+                        print(f"❌ 文件处理失败: {Path(file_path).name}")
+                except Exception as e:
+                    print(f"❌ 并发处理文件时发生错误 {file_path}: {e}")
+        
+        # Create processed files with timestamps  
+        current_timestamp = datetime.now().isoformat()
+        processed_files_with_timestamps = [
+            {"path": file_path, "timestamp": current_timestamp}
+            for file_path in processed_files
+        ]
+        
+        print(f"🎉 文件上传处理完成:")
+        print(f"  - 输入文件数: {len(file_paths)}")
+        print(f"  - 成功处理: {len(processed_files)} 个")
+        print(f"  - 失败处理: {len(file_paths) - len(processed_files)} 个")
+        print("✅ _file_upload 执行完成")
+        print("=" * 50)
 
         return {
-            "new_upload_files_path": detected_files_with_timestamps,
-            "upload_files_path": existing_files + detected_files_with_timestamps,
-            "new_upload_files_processed_path": processed_files_with_timestamps,
-            "original_files_path": existing_original_files + original_files_with_timestamps,
-            "replacement_info": replacement_info
+            "new_upload_files_path": uploaded_files_path,  # Keep original input files 
+            "new_upload_files_processed_path": processed_files_with_timestamps  # LLM-ready processed files
         }
+
+    def _process_single_file_for_llm(self, file_path: str) -> str | None:
+        """
+        Process a single file for LLM analysis capability.
+        
+        Args:
+            file_path: Path to the file to process
+            
+        Returns:
+            str: Path to the processed file in temp folder, or None if failed
+        """
+        try:
+            from utils.file_process import process_file_for_LLM_capability
+            return process_file_for_LLM_capability(file_path)
+        except Exception as e:
+            print(f"❌ 单文件LLM处理失败 {file_path}: {e}")
+            return None
 
 
     def _analyze_uploaded_files(self, state: FileProcessState) -> FileProcessState:
@@ -687,7 +751,7 @@ class FileProcessAgent:
         
     def _process_irrelevant(self, state: FileProcessState) -> FileProcessState:
         """This node will process the irrelevant files, it will delete the irrelevant files (both processed and original) from the staging area"""
-        
+        return
         print("\n🔍 开始执行: _process_irrelevant")
         print("=" * 50)
         
@@ -726,6 +790,7 @@ class FileProcessAgent:
     
     def _summary_file_upload(self, state: FileProcessState) -> FileProcessState:
         """Summary node for file upload process"""
+        return
         
         print("\n🔍 开始执行: _summary_file_upload")
         print("=" * 50)

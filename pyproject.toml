@@ -12,6 +12,7 @@ dependencies = [
     "langchain>=0.3.27",
     "langchain-openai>=0.3.28",
     "langgraph>=0.6.3",
+    "mammoth>=1.8.0",
     "mysql>=0.0.3",
     "numpy>=2.3.2",
     "openpyxl>=3.1.5",
@@ -19,5 +20,6 @@ dependencies = [
     "pillow>=11.3.0",
     "psutil>=7.0.0",
     "scikit-learn>=1.7.1",
+    "xlrd>=2.0.2",
     "xlwings>=0.33.15",
 ]

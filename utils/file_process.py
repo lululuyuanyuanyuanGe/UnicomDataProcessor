@@ -65,19 +65,35 @@ def _log_existence(path: str, container: list):
         print(f"⚠️ 文件路径无效或文件不存在: {path}")
 
 
-def process_file_to_text(file_path: str | Path) -> str | None:
-    # This function should concurrently process all the uploaded files, and get the txt format, and saved them inside the temp folder
+def process_file_for_LLM_capability(file_path: str | Path) -> str | None:
     """
-    Efficiently process a file to readable text content in memory.
+    Process uploaded files to formats suitable for LLM analysis.
     
-    This function does: 1 read → process in memory → return text
-    Instead of: read → write temp file → read temp file → write final file
+    This function converts different file types to LLM-analyzable formats:
+    - Spreadsheets (Excel, CSV) → CSV format for tabular data analysis
+    - Documents (Word, DOCX) → Plain text for content analysis  
+    - Text files → As-is (already LLM-ready)
+    - Other formats → Metadata or error handling
     
+    The processed files are saved in the temp/ folder with appropriate extensions.
+    
+    Args:
+        file_path: Path to the file to process
+        
     Returns:
-        str: The processed text content, or None if processing failed
+        str: Path to the processed file in temp folder, or None if processing failed
     """
     source_path = Path(file_path)
+    
+    if not source_path.exists():
+        print(f"❌ File does not exist: {file_path}")
+        return None
+        
     file_extension = source_path.suffix.lower()
+    
+    # Create temp directory if it doesn't exist
+    temp_dir = Path("temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
     
     # Define file type categories
     spreadsheet_extensions = {'.xlsx', '.xls', '.xlsm', '.ods', '.csv'}
@@ -86,36 +102,35 @@ def process_file_to_text(file_path: str | Path) -> str | None:
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp', '.svg'}
     
     try:
-        # Handle spreadsheet files
+        print(f"📄 Processing file for LLM analysis: {source_path.name}")
+        
+        # Handle spreadsheet files - convert to CSV for LLM analysis
         if file_extension in spreadsheet_extensions:
-            return _process_spreadsheet(source_path)
+            return _process_spreadsheet(source_path, temp_dir)
         
-        # Handle document files (DOCX, DOC, etc.)
+        # Handle document files - extract text content
         elif file_extension in document_extensions:
-            return _process_doc_file(source_path)
+            return _process_doc_file(source_path, temp_dir)
         
-        # Handle plain text files
+        # Handle plain text files - copy as-is since they're already LLM-ready
         elif file_extension in text_extensions:
-            return _read_text_auto(source_path)
+            return _copy_text_file(source_path, temp_dir)
         
-        # Handle image files - return metadata since we can't convert to text
+        # Handle PDF files
+        elif file_extension == '.pdf':
+            return _process_pdf_file(source_path, temp_dir)
+            
+        # Handle image files - create metadata file
         elif file_extension in image_extensions:
-            return f"Image file: {source_path.name}\nFile size: {source_path.stat().st_size} bytes\nFormat: {file_extension}"
-        
+            return _process_image_file(source_path, temp_dir)
+            
         # Handle other file types
         else:
-            # Try to detect if it's a text file by MIME type
-            import mimetypes
-            mime_type, _ = mimetypes.guess_type(str(source_path))
-            
-            if mime_type and mime_type.startswith('text/'):
-                return _read_text_auto(source_path)
-            else:
-                # For binary files, return metadata
-                return f"Binary file: {source_path.name}\nFile size: {source_path.stat().st_size} bytes\nType: {mime_type or 'unknown'}"
+            print(f"⚠️ Unsupported file type: {file_extension}")
+            return _create_unsupported_file_info(source_path, temp_dir)
                 
     except Exception as e:
-        print(f"❌ Error processing file {file_path}: {e}")
+        print(f"❌ Error processing file for LLM capability {file_path}: {e}")
         return None
 
 
@@ -142,18 +157,202 @@ def _read_text_auto(path: Path) -> str:
                 pass
     return data.decode("utf-8", errors="replace")
 
-def _process_spreadsheet():
-    # This function should use pandas that convertts the excel to csv format, then save them inside the txt file with the same
-    # file name but txt suffix under the temp folder
-    pass
+def _process_spreadsheet(source_path: Path, temp_dir: Path) -> str | None:
+    """
+    Convert Excel/spreadsheet files to CSV format for LLM analysis.
+    
+    Args:
+        source_path: Path to the source spreadsheet file
+        temp_dir: Directory to save the processed file
+        
+    Returns:
+        str: Path to the created CSV file in temp folder, or None if failed
+    """
+    try:
+        print(f"📊 Converting spreadsheet to CSV: {source_path.name}")
+        
+        # Generate output filename
+        base_name = source_path.stem
+        output_file = temp_dir / f"{base_name}.csv"
+        
+        # Read the spreadsheet file
+        if source_path.suffix.lower() == '.csv':
+            # If it's already CSV, just copy it
+            df = pd.read_csv(source_path, encoding='utf-8')
+        else:
+            # For Excel files, read the first sheet
+            df = pd.read_excel(source_path, sheet_name=0)
+        
+        # Save as CSV for LLM analysis
+        df.to_csv(output_file, index=False, encoding='utf-8')
+        
+        print(f"✅ Spreadsheet converted to CSV: {output_file.name}")
+        return str(output_file)
+        
+    except Exception as e:
+        print(f"❌ Failed to process spreadsheet {source_path.name}: {e}")
+        return None
 
-def _process_doc_file():
-    # We will use mamoth library to extratct the content of the word files, and save it in the txt format under the temp folder
-    pass
+def _process_doc_file(source_path: Path, temp_dir: Path) -> str | None:
+    """
+    Extract text content from Word documents using mammoth library.
+    
+    Args:
+        source_path: Path to the source document file
+        temp_dir: Directory to save the processed file
+        
+    Returns:
+        str: Path to the created text file in temp folder, or None if failed
+    """
+    try:
+        print(f"📄 Extracting text from document: {source_path.name}")
+        
+        # Generate output filename
+        base_name = source_path.stem
+        output_file = temp_dir / f"{base_name}.txt"
+        
+        # Check file extension
+        if source_path.suffix.lower() == '.docx':
+            # Use mammoth for DOCX files
+            import mammoth
+            with open(source_path, "rb") as docx_file:
+                result = mammoth.extract_raw_text(docx_file)
+                text_content = result.value
 
-def _process_pdf_file():
-    # We will support the PDF files in later versions, for now just safely ignore the pdf files
-    pass
+        elif source_path.suffix.lower() == '.doc':
+            # For .doc files, fall back to LibreOffice conversion
+            print("⚠️ 请先将 .doc 文件转换成 docx文件")
+            return None
+        else:
+            print(f"⚠️ Unsupported document format: {source_path.suffix}")
+            return None
+        
+        # Save extracted text content
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(text_content)
+        
+        print(f"✅ Document text extracted: {output_file.name}")
+        return str(output_file)
+        
+    except Exception as e:
+        print(f"❌ Failed to process document {source_path.name}: {e}")
+        return None
+
+def _process_pdf_file(source_path: Path, temp_dir: Path) -> str | None:
+    """
+    Process PDF files - placeholder for future implementation.
+    
+    Args:
+        source_path: Path to the source PDF file
+        temp_dir: Directory to save the processed file
+        
+    Returns:
+        None (not implemented yet)
+    """
+    print(f"⚠️ PDF processing not yet implemented: {source_path.name}")
+    return None
+
+def _copy_text_file(source_path: Path, temp_dir: Path) -> str | None:
+    """
+    Copy text files as-is since they're already LLM-ready.
+    
+    Args:
+        source_path: Path to the source text file
+        temp_dir: Directory to save the processed file
+        
+    Returns:
+        str: Path to the copied file in temp folder, or None if failed
+    """
+    try:
+        print(f"📝 Copying text file: {source_path.name}")
+        
+        # Generate output filename
+        base_name = source_path.stem
+        extension = source_path.suffix
+        output_file = temp_dir / f"{base_name}{extension}"
+        
+        # Read and copy the text file
+        content = _read_text_auto(source_path)
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print(f"✅ Text file copied: {output_file.name}")
+        return str(output_file)
+        
+    except Exception as e:
+        print(f"❌ Failed to copy text file {source_path.name}: {e}")
+        return None
+
+def _process_image_file(source_path: Path, temp_dir: Path) -> str | None:
+    """
+    Create metadata file for image files.
+    
+    Args:
+        source_path: Path to the source image file
+        temp_dir: Directory to save the processed file
+        
+    Returns:
+        str: Path to the created metadata file in temp folder, or None if failed
+    """
+    try:
+        print(f"🖼️ Creating metadata for image: {source_path.name}")
+        
+        # Generate output filename
+        base_name = source_path.stem
+        output_file = temp_dir / f"{base_name}_metadata.txt"
+        
+        # Create metadata content
+        file_size = source_path.stat().st_size
+        metadata_content = f"Image file: {source_path.name}\nFile size: {file_size} bytes\nFormat: {source_path.suffix}"
+        
+        # Save metadata
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(metadata_content)
+        
+        print(f"✅ Image metadata created: {output_file.name}")
+        return str(output_file)
+        
+    except Exception as e:
+        print(f"❌ Failed to create image metadata {source_path.name}: {e}")
+        return None
+
+def _create_unsupported_file_info(source_path: Path, temp_dir: Path) -> str | None:
+    """
+    Create info file for unsupported file types.
+    
+    Args:
+        source_path: Path to the source file
+        temp_dir: Directory to save the processed file
+        
+    Returns:
+        str: Path to the created info file in temp folder, or None if failed
+    """
+    try:
+        print(f"❓ Creating info for unsupported file: {source_path.name}")
+        
+        # Generate output filename
+        base_name = source_path.stem
+        output_file = temp_dir / f"{base_name}_info.txt"
+        
+        # Try to detect MIME type
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(str(source_path))
+        
+        # Create info content
+        file_size = source_path.stat().st_size
+        info_content = f"Unsupported file: {source_path.name}\nFile size: {file_size} bytes\nExtension: {source_path.suffix}\nMIME type: {mime_type or 'unknown'}"
+        
+        # Save info
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(info_content)
+        
+        print(f"✅ Unsupported file info created: {output_file.name}")
+        return str(output_file)
+        
+    except Exception as e:
+        print(f"❌ Failed to create unsupported file info {source_path.name}: {e}")
+        return None
+    
 
 def move_template_files_safely(processed_template_file: str, original_files_list: list[str], dest_dir_name: str = "template_files") -> dict[str, str]:
     """
@@ -331,21 +530,55 @@ def analyze_single_file(file_path: str) -> tuple[str, str, str]:
         analysis_content = file_content[:5000] if len(file_content) > 2000 else file_content
         
         # Create individual analysis prompt for this file
-        system_prompt = f"""你是一个表格生成智能体，需要分析用户上传的文件内容是不是一个包含有效数据集的表格文件，最直观的是用户上传了一个excel表格，并且并非模板表格，里面有具体的数据，此时将文件
+        system_prompt = f"""
+你是一个“表格数据识别”智能体。你的任务是判断给定文件内容是否为“包含实际数据的表格文件”。注意：所有文件已被转换为txt；若是表格，其内容以HTML代码形式呈现。你必须仅依据文件内容进行判断，不能根据文件名、后缀或路径推断。
 
-        仔细检查不要把补充文件错误划分为模板文件反之亦然，补充文件里面是有数据的，模板文件里面是空的，或者只有一两个例子数据
-        注意：所有文件已转换为txt格式，表格以HTML代码形式呈现，请根据内容而非文件名或后缀判断。
+严格分类规则
+- 输出仅允许两类：
+  - "table": 文件中包含“非样例/非占位符”的、成规模的实际数据表格（通常是HTML表格，且有多行记录和多个字段，字段值多样且非占位符）。
+  - "irrelevant": 其他任何情况，包括模板、空表、仅说明性文字、目录、无结构文本、仅少量示例行、仅字段定义/占位符。
+- 模板的精确定义（必须判为 "irrelevant"）：
+  - 只有表头/字段名、或字段说明、或占位符（如“示例”“样例”“模板”“必填”“填写示例”“N/A”“请输入”），无真实批量数据。
+  - 只有极少数（如≤2行）示例数据或演示行；或大量单元格为空/0/NA/—。
+  - 重复性的占位值或格式说明（如“YYYY-MM-DD”“示例：张三”）。
+  - 数据行中字段值大面积重复、明显非实际（如全是“示例”“test”“sample”“模板”“N/A”）。
+- 真实表格（判为 "table"）的最低要求（需同时满足）：
+  - 有明确表头与多行数据记录（通常≥3行实际数据，不含表头）。
+  - 多字段列且数据值分布有多样性，非占位符/非样例说明。
+  - 若为HTML表格，<table> 内存在多个 <tr> 数据行，且 <td> 含具体值（非空、非说明性文本）。
 
-        当前分析文件:
-        文件名: {source_path.name}
-        文件路径: {file_path}
-        文件内容:
-        {analysis_content}
+判定要点与启发式
+- 聚焦 HTML 结构：<table>、<thead>、<tbody>、<tr>、<th>/<td>。没有表格结构且内容非结构化时，通常为 "irrelevant"。
+- 模板信号：
+  - 含“模板/样例/示例/示范/范本/填写说明/请填写/必填/选填/示例值/请输入/格式：YYYY-MM-DD”等。
+  - 数据区大量为空、统一占位、或仅1–2行示例。
+  - 字段说明性文本多于数据内容。
+- 真实数据信号：
+  - 多行记录且单元格值差异明显（不同人名/日期/金额/编号等）。
+  - 数值、日期、文本混合且看起来真实。
+- 若同时出现表头与少量（≤2）示例行，优先判为模板（"irrelevant"）。
+- 不要因为存在 <table> 结构就直接判为 "table"；必须确认包含成规模真实数据。
 
-        请严格按照以下JSON格式回复，只返回这一个文件的分类结果（不要添加任何其他文字），不要将返回内容包裹在```json```中：
-        {{
-            "classification": "irrelevant" | "table"
-        }}"""
+输入
+当前分析文件:
+文件名: {source_path.name}
+文件路径: {file_path}
+文件内容:
+{analysis_content}
+
+输出格式（仅返回此JSON，禁止添加其他文字或注释）：
+{{
+    "classification": "irrelevant" | "table"
+}}
+
+在选择 "table" 前请核对：
+- 数据行数 ≥ 3（不含表头/汇总行/空行）
+- 单元格值非占位符且具有明显多样性
+- 非说明性或引导性文本占比不高
+
+无法确定时，请保守选择 "irrelevant"。
+"""
+
         
         # Get LLM analysis for this file
         print("📤 正在调用LLM进行文件分类...")
