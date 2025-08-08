@@ -279,54 +279,113 @@ def process_file_to_text(file_path: str | Path) -> str | None:
         return None
 
 
+# Global lock for LibreOffice operations to prevent concurrent access issues
+import threading
+_libreoffice_lock = threading.Lock()
+
 def _process_spreadsheet_in_memory(source_path: Path) -> str:
     """Process spreadsheet file in memory using LibreOffice"""
     import tempfile
+    import time
     
-    # Create a temporary directory for LibreOffice processing
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_dir_path = Path(temp_dir)
+    # Use lock to ensure only one LibreOffice process runs at a time
+    with _libreoffice_lock:
+        print(f"🔒 LibreOffice lock acquired for: {source_path.name}")
         
-        # LibreOffice export to temp directory
-        soffice = r"D:\LibreOffice\program\soffice.exe"
-        subprocess.run(
-            [soffice, "--headless", "--convert-to", "html", str(source_path),
-             "--outdir", str(temp_dir_path)],
-            check=True
-        )
-        
-        # Read the generated HTML file
-        raw_html_path = temp_dir_path / f"{source_path.stem}.html"
-        if not raw_html_path.exists():
-            raise FileNotFoundError(f"LibreOffice did not create {raw_html_path}")
-        
-        # Clean HTML in memory and return the result
-        return _clean_html_in_memory(raw_html_path)
+        # Create a temporary directory for LibreOffice processing
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            
+            try:
+                # LibreOffice export to temp directory
+                soffice = r"D:\LibreOffice\program\soffice.exe"
+                print(f"📊 Converting spreadsheet: {source_path.name}")
+                
+                result = subprocess.run(
+                    [soffice, "--headless", "--convert-to", "html", str(source_path),
+                     "--outdir", str(temp_dir_path)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=60  # 60 second timeout
+                )
+                
+                # Read the generated HTML file
+                raw_html_path = temp_dir_path / f"{source_path.stem}.html"
+                if not raw_html_path.exists():
+                    print(f"❌ LibreOffice output not found. Expected: {raw_html_path}")
+                    print(f"📁 Temp directory contents: {list(temp_dir_path.iterdir())}")
+                    raise FileNotFoundError(f"LibreOffice did not create {raw_html_path}")
+                
+                print(f"✅ Successfully converted: {source_path.name}")
+                
+                # Clean HTML in memory and return the result
+                return _clean_html_in_memory(raw_html_path)
+                
+            except subprocess.TimeoutExpired:
+                print(f"⏱️ LibreOffice conversion timed out for: {source_path.name}")
+                raise Exception(f"LibreOffice conversion timed out after 60 seconds")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ LibreOffice conversion failed for: {source_path.name}")
+                print(f"   Exit code: {e.returncode}")
+                print(f"   Stdout: {e.stdout}")
+                print(f"   Stderr: {e.stderr}")
+                raise Exception(f"LibreOffice conversion failed with exit code {e.returncode}")
+            except Exception as e:
+                print(f"❌ Unexpected error converting: {source_path.name} - {e}")
+                raise
 
 
 def _process_document_in_memory(source_path: Path) -> str:
     """Process document file in memory using LibreOffice to convert to txt"""
     import tempfile
     
-    # Create a temporary directory for LibreOffice processing
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_dir_path = Path(temp_dir)
+    # Use lock to ensure only one LibreOffice process runs at a time
+    with _libreoffice_lock:
+        print(f"🔒 LibreOffice lock acquired for: {source_path.name}")
         
-        # LibreOffice export to temp directory as txt
-        soffice = r"D:\LibreOffice\program\soffice.exe"
-        subprocess.run(
-            [soffice, "--headless", "--convert-to", "txt:Text (encoded):UTF8", str(source_path),
-             "--outdir", str(temp_dir_path)],
-            check=True
-        )
-        
-        # Read the generated TXT file
-        raw_txt_path = temp_dir_path / f"{source_path.stem}.txt"
-        if not raw_txt_path.exists():
-            raise FileNotFoundError(f"LibreOffice did not create {raw_txt_path}")
-        
-        # Read and return the txt content directly
-        return _read_text_auto(raw_txt_path)
+        # Create a temporary directory for LibreOffice processing
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            
+            try:
+                # LibreOffice export to temp directory as txt
+                soffice = r"D:\LibreOffice\program\soffice.exe"
+                print(f"📄 Converting document: {source_path.name}")
+                
+                result = subprocess.run(
+                    [soffice, "--headless", "--convert-to", "txt:Text (encoded):UTF8", str(source_path),
+                     "--outdir", str(temp_dir_path)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=60  # 60 second timeout
+                )
+                
+                # Read the generated TXT file
+                raw_txt_path = temp_dir_path / f"{source_path.stem}.txt"
+                if not raw_txt_path.exists():
+                    print(f"❌ LibreOffice output not found. Expected: {raw_txt_path}")
+                    print(f"📁 Temp directory contents: {list(temp_dir_path.iterdir())}")
+                    raise FileNotFoundError(f"LibreOffice did not create {raw_txt_path}")
+                
+                print(f"✅ Successfully converted: {source_path.name}")
+                
+                # Read and return the txt content directly
+                return _read_text_auto(raw_txt_path)
+                
+            except subprocess.TimeoutExpired:
+                print(f"⏱️ LibreOffice conversion timed out for: {source_path.name}")
+                raise Exception(f"LibreOffice conversion timed out after 60 seconds")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ LibreOffice conversion failed for: {source_path.name}")
+                print(f"   Exit code: {e.returncode}")
+                print(f"   Stdout: {e.stdout}")
+                print(f"   Stderr: {e.stderr}")
+                raise Exception(f"LibreOffice conversion failed with exit code {e.returncode}")
+            except Exception as e:
+                print(f"❌ Unexpected error converting: {source_path.name} - {e}")
+                raise
 
 
 def _clean_html_in_memory(raw_html_path: Path) -> str:
@@ -2380,3 +2439,65 @@ def analyze_single_file(file_path: str) -> tuple[str, str, str]:
         print(f"❌ 处理文件出错 {file_path}: {e}")
         # Return irrelevant on error
         return file_path, "irrelevant", Path(file_path).name
+    
+
+def process_files_concurrently(detected_files, staging_dir, current_timestamp):
+    """Process files concurrently using ThreadPoolExecutor"""
+    
+    def process_single_file(file_path):
+        """Process a single file - both content retrieval and original file saving"""
+        results = {}
+        
+        try:
+            # Process file content (assuming retrieve_file_content can handle single files)
+            processed_content = retrieve_file_content([file_path])
+            results['processed_file'] = processed_content[0] if processed_content else None
+            
+            # Save original file
+            source_path = Path(file_path)
+            original_file_saved_path = save_original_file(source_path, staging_dir)
+            
+            if original_file_saved_path:
+                results['original_file'] = original_file_saved_path
+                results['original_with_timestamp'] = {
+                    "path": original_file_saved_path,
+                    "timestamp": current_timestamp
+                }
+                print(f"💾 原始文件已保存: {Path(original_file_saved_path).name}")
+            else:
+                print(f"⚠️ 原始文件保存失败: {source_path.name}")
+                results['error'] = f"Save failed for {source_path.name}"
+                
+        except Exception as e:
+            print(f"❌ 处理文件时出错 {file_path}: {e}")
+            results['error'] = str(e)
+        
+        return file_path, results
+    
+    # Use ThreadPoolExecutor for concurrent processing
+    processed_files = []
+    original_files = []
+    original_files_with_timestamps = []
+    
+    with ThreadPoolExecutor(max_workers=min(len(detected_files), 10)) as executor:
+        # Submit all tasks
+        future_to_file = {
+            executor.submit(process_single_file, file_path): file_path 
+            for file_path in detected_files
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_file):
+            file_path, results = future.result()
+            
+            if 'error' not in results:
+                if results.get('processed_file'):
+                    processed_files.append(results['processed_file'])
+                
+                if results.get('original_file'):
+                    original_files.append(results['original_file'])
+                    original_files_with_timestamps.append(results['original_with_timestamp'])
+            else:
+                print(f"⚠️ 跳过有错误的文件: {file_path}")
+    
+    return processed_files, original_files, original_files_with_timestamps

@@ -22,7 +22,7 @@ from utils.file_process import (retrieve_file_content, save_original_file,
                                     get_available_locations, move_template_files_to_final_destination,
                                     move_supplement_files_to_final_destination, delete_files_from_staging_area,
                                     reconstruct_csv_with_headers, detect_and_process_file_paths,
-                                    analyze_single_file)
+                                    analyze_single_file, process_files_concurrently)
 from similarity_calculation import TableSimilarityCalculator
 from utils.table_processing_helpers import (
     extract_headers_from_response, 
@@ -127,96 +127,77 @@ class FileProcessAgent:
             "village_name": village_name
         }
 
-
     def _file_upload(self, state: FileProcessState) -> FileProcessState:
-            """This node will upload user's file to our system"""
-            print("\n🔍 开始执行: _file_upload")
-            print("=" * 50)
+        """This node will upload user's file to our system with concurrent processing"""
+        print("\n🔍 开始执行: _file_upload")
+        print("=" * 50)
+        
+        print("📁 正在检测用户输入中的文件路径...")
+        detected_files_with_timestamps = state["upload_files_path"]
+        detected_files = [file_entry["path"] for file_entry in detected_files_with_timestamps]
+        print(f"📋 检测到 {len(detected_files)} 个文件")
+        
+        print("🔍 正在检查文件是否已存在于上传记录中...")
+        files_to_replace = []
+        old_files_to_delete = []
+        
+        for file in detected_files:
+            clean_table_name = self.get_clean_table_name(file)
+            file_exists, old_file_path = check_file_exists_in_uploads(clean_table_name)
             
-            print("📁 正在检测用户输入中的文件路径...")
-            detected_files_with_timestamps = state["upload_files_path"]
-            detected_files = [file_entry["path"] for file_entry in detected_files_with_timestamps]
-            print(f"📋 检测到 {len(detected_files)} 个文件")
-            
-            print("🔍 正在检查文件是否已存在于上传记录中...")
-            files_to_replace = []  # Files that need replacement
-            old_files_to_delete = []  # Old files to delete
-            
-            for i, file in enumerate(detected_files):
-                clean_table_name = self.get_clean_table_name(file)
-                file_exists, old_file_path = check_file_exists_in_uploads(clean_table_name)
-                
-                if file_exists:
-                    files_to_replace.append((file, clean_table_name, old_file_path))
-                    print(f"🔄 文件将被替换: {clean_table_name} (原文件: {old_file_path})")
-                    if old_file_path and Path(old_file_path).exists():
-                        old_files_to_delete.append(old_file_path)
-            
-            # Store replacement info for later use
-            replacement_info = {file: (clean_name, old_path) for file, clean_name, old_path in files_to_replace}
-            
-            if not detected_files:
-                print("⚠️ 没有新文件需要上传")
-                print("✅ _file_upload 执行完成")
-                print("=" * 50)
-                return {
-                    "new_upload_files_path": [],
-                    "new_upload_files_processed_path": [],
-                    "replacement_info": {}
-                }
-            
-            print(f"🔄 正在处理 {len(detected_files)} 个新文件...")
-            
-            # Create staging area for original files
-            project_root = Path.cwd()
-            staging_dir = project_root / "temp"
-            staging_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Process the files to get .txt versions
-            processed_files = retrieve_file_content(detected_files)
-            
-            # Create processed files with timestamps
-            current_timestamp = datetime.now().isoformat()
-            processed_files_with_timestamps = [
-                {"path": file_path, "timestamp": current_timestamp}
-                for file_path in processed_files
-            ]
-            
-            # Save original files separately
-            original_files = []
-            original_files_with_timestamps = []
-            for file_path in detected_files:
-                try:
-                    source_path = Path(file_path)
-                    original_file_saved_path = save_original_file(source_path, staging_dir)
-                    if original_file_saved_path:
-                        original_files.append(original_file_saved_path)
-                        original_files_with_timestamps.append({
-                            "path": original_file_saved_path,
-                            "timestamp": current_timestamp
-                        })
-                        print(f"💾 原始文件已保存: {Path(original_file_saved_path).name}")
-                    else:
-                        print(f"⚠️ 原始文件保存失败: {source_path.name}")
-                except Exception as e:
-                    print(f"❌ 保存原始文件时出错 {file_path}: {e}")
-            
-            print(f"✅ 文件处理完成: {len(processed_files)} 个处理文件, {len(original_files)} 个原始文件")
+            if file_exists:
+                files_to_replace.append((file, clean_table_name, old_file_path))
+                print(f"🔄 文件将被替换: {clean_table_name} (原文件: {old_file_path})")
+                if old_file_path and Path(old_file_path).exists():
+                    old_files_to_delete.append(old_file_path)
+        
+        replacement_info = {file: (clean_name, old_path) for file, clean_name, old_path in files_to_replace}
+        
+        if not detected_files:
+            print("⚠️ 没有新文件需要上传")
             print("✅ _file_upload 执行完成")
             print("=" * 50)
-            
-            # Update state with new files
-            # Safely handle the case where upload_files_path might not exist in state
-            existing_files = state.get("upload_files_path", [])
-            existing_original_files = state.get("original_files_path", [])
             return {
-                "new_upload_files_path": detected_files_with_timestamps,
-                "upload_files_path": existing_files + detected_files_with_timestamps,
-                "new_upload_files_processed_path": processed_files_with_timestamps,
-                "original_files_path": existing_original_files + original_files_with_timestamps,
-                "replacement_info": replacement_info
+                "new_upload_files_path": [],
+                "new_upload_files_processed_path": [],
+                "replacement_info": {}
             }
-    
+        
+        print(f"🔄 正在并发处理 {len(detected_files)} 个新文件...")
+        
+        # Create staging area
+        project_root = Path.cwd()
+        staging_dir = project_root / "temp"
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        
+        current_timestamp = datetime.now().isoformat()
+        
+        # Concurrent file processing
+        processed_files, original_files, original_files_with_timestamps = process_files_concurrently(
+            detected_files, staging_dir, current_timestamp
+        )
+        
+        # Create processed files with timestamps
+        processed_files_with_timestamps = [
+            {"path": file_path, "timestamp": current_timestamp}
+            for file_path in processed_files
+        ]
+        
+        print(f"✅ 文件处理完成: {len(processed_files)} 个处理文件, {len(original_files)} 个原始文件")
+        print("✅ _file_upload 执行完成")
+        print("=" * 50)
+        
+        # Update state
+        existing_files = state.get("upload_files_path", [])
+        existing_original_files = state.get("original_files_path", [])
+        
+        return {
+            "new_upload_files_path": detected_files_with_timestamps,
+            "upload_files_path": existing_files + detected_files_with_timestamps,
+            "new_upload_files_processed_path": processed_files_with_timestamps,
+            "original_files_path": existing_original_files + original_files_with_timestamps,
+            "replacement_info": replacement_info
+        }
 
 
     def _analyze_uploaded_files(self, state: FileProcessState) -> FileProcessState:
@@ -806,7 +787,6 @@ class FileProcessAgent:
         print("=" * 50)
         
         return {}  # Return empty dict since this node doesn't need to update any state keys
-
     
     def _summary_file_upload(self, state: FileProcessState) -> FileProcessState:
         """Summary node for file upload process"""
