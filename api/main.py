@@ -85,7 +85,7 @@ async def http_exception_handler(request, exc):
             error="HTTPException",
             message=exc.detail,
             details={"status_code": exc.status_code}
-        ).dict()
+        ).model_dump()
     )
 
 

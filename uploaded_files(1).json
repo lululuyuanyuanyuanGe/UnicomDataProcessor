@@ -1,0 +1,45 @@
+[
+  {
+    "excel_name": "燕云村残疾人名单",
+    "timestamp": "2025-08-08T14:57:22.312637",
+    "headers": [
+      "序号",
+      "姓名",
+      "残疾类别",
+      "监护人姓名",
+      "残疾证号",
+      "地址",
+      "联系电话",
+      "备注"
+    ],
+    "original_file_path": "uploaded_files\\燕云村残疾人名单.xlsx",
+    "similarity_match": {
+      "top_matches": [
+        {
+          "table_name": "燕云村2021年新一届相关人员名册",
+          "headers": ["镇街","属性","村（社区）名称","党组织类别"],
+          "similarity_percentage": 89.03846719128535,
+          "similarity_formatted": "89.0%"
+        },
+        {
+          "table_name": "燕云村防返贫信息总表",
+          "headers": ["镇街","属性","村（社区）名称","党组织类别"],
+          "similarity_percentage": 85.72295617868795,
+          "similarity_formatted": "85.7%"
+        },
+        {
+          "table_name": "人员信息表",
+          "headers": ["镇街","属性","村（社区）名称","党组织类别"],
+          "similarity_percentage": 80.386717328472,
+          "similarity_formatted": "80.4%"
+        }
+      ],
+      "best_match": {
+        "table_name": "燕云村2021年新一届相关人员名册",
+        "headers": ["镇街","属性","村（社区）名称","党组织类别"],
+        "similarity_percentage": 89.03846719128535,
+        "similarity_formatted": "89.0%"
+      }
+    }
+  }
+]

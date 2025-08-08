@@ -15,10 +15,7 @@ services:
       - CHAT_BI_DB=${CHAT_BI_DB}
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
-      # Volume mounts for file access (MAIN DATA DIRECTORIES)
-      # Map host data directories to container paths
-      # Adjust these paths according to your server setup
-      - ${HOST_FILES_PATH}:/temp                 # Main data directory
+      - ${HOST_FILES_PATH}:/data                 # Main data directory
 
       # Application persistence (keep these)
       - ./uploaded_files:/app/uploaded_files                   # Processed files storage
