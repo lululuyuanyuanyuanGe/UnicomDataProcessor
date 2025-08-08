@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 import chardet
+import shutil
 from typing import Union, List, Dict
 import pandas as pd
 from datetime import datetime
@@ -160,6 +161,7 @@ def _read_text_auto(path: Path) -> str:
 def _process_spreadsheet(source_path: Path, temp_dir: Path) -> str | None:
     """
     Convert Excel/spreadsheet files to CSV format for LLM analysis.
+    Also saves a copy of the original Excel file in temp folder with original name.
     
     Args:
         source_path: Path to the source spreadsheet file
@@ -171,9 +173,15 @@ def _process_spreadsheet(source_path: Path, temp_dir: Path) -> str | None:
     try:
         print(f"📊 Converting spreadsheet to CSV: {source_path.name}")
         
-        # Generate output filename
+        # Generate output filenames
         base_name = source_path.stem
-        output_file = temp_dir / f"{base_name}.csv"
+        csv_output_file = temp_dir / f"{base_name}.csv"
+        
+        # Save copy of original file to temp folder with original name
+        if source_path.suffix.lower() != '.csv':
+            original_copy_path = temp_dir / source_path.name
+            shutil.copy2(source_path, original_copy_path)
+            print(f"📁 Original Excel file copied to temp: {original_copy_path.name}")
         
         # Read the spreadsheet file
         if source_path.suffix.lower() == '.csv':
@@ -184,10 +192,10 @@ def _process_spreadsheet(source_path: Path, temp_dir: Path) -> str | None:
             df = pd.read_excel(source_path, sheet_name=0)
         
         # Save as CSV for LLM analysis
-        df.to_csv(output_file, index=False, encoding='utf-8')
+        df.to_csv(csv_output_file, index=False, encoding='utf-8')
         
-        print(f"✅ Spreadsheet converted to CSV: {output_file.name}")
-        return str(output_file)
+        print(f"✅ Spreadsheet converted to CSV: {csv_output_file.name}")
+        return str(csv_output_file)
         
     except Exception as e:
         print(f"❌ Failed to process spreadsheet {source_path.name}: {e}")

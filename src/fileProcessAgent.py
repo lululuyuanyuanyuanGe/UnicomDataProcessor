@@ -10,12 +10,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-from typing import Dict, List, Optional, Any, TypedDict, Annotated
+from typing import Dict, Any, TypedDict
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import shutil
-from utils.modelRelated import invoke_model, invoke_model_with_screenshot, invoke_embedding_model
+from utils.modelRelated import invoke_model_with_screenshot
 from utils.file_process import (    delete_files_from_staging_area,
                                     detect_and_process_file_paths,
                                     analyze_single_file)
@@ -486,7 +486,7 @@ class FileProcessAgent:
             except Exception as e:
                 print(f"❌ 保存uploaded_files.json失败: {e}")
 
-    def save_original_file_to_uploads(self, file_path: str, chinese_name: str, replacement_mode: bool = False, old_file_path: str = "") -> str:
+    def save_original_file_to_uploads(self, file_path: str, chinese_name: str) -> str:
         """Move original file to uploaded_files/ directory with Chinese name, handling replacements"""
         try:
             source_path = Path(file_path)
@@ -500,11 +500,19 @@ class FileProcessAgent:
             # ALWAYS use clean name without timestamp - no more timestamped files
             new_filename = f"{chinese_name}{file_extension}"
             dest_path = uploads_dir / new_filename
-            print("source_path是什么: ", source_path)
+            
+            # Check if file already exists and log replacement
+            if dest_path.exists():
+                print(f"🔄 替换现有文件: {dest_path.name}")
+            else:
+                print(f"📁 保存新文件: {dest_path.name}")
+            
+            # Copy/replace the file (shutil.copy will overwrite existing files)
+            print(f"📋 Source path: {source_path}")
             os.chmod(source_path, stat.S_IWRITE)
             shutil.copy(source_path, dest_path)
 
-            print(f"✅ 文件已保存到到: {dest_path.name} (无时间戳)")
+            print(f"✅ 文件已保存到: {dest_path.name} (无时间戳)")
             return str(dest_path)
             
         except Exception as e:
@@ -517,6 +525,12 @@ class FileProcessAgent:
         try:
             # Load existing data
             data = self.load_uploaded_files_json()
+            
+            # Check if table already exists and log replacement
+            if chinese_table_name in data:
+                print(f"🔄 替换现有表格数据: {chinese_table_name}")
+            else:
+                print(f"📊 添加新表格数据: {chinese_table_name}")
             
             # Update with new table data
             data[chinese_table_name] = table_data
@@ -538,16 +552,29 @@ class FileProcessAgent:
             source_path = Path(file_path)
             print(f"🔍 正在处理单个表格文件: {source_path.name}")
             
-            # Find corresponding original Excel file
+            # Find corresponding original Excel file in temp folder
             table_file_stem = source_path.stem
-            original_files_with_timestamps = state.get("original_files_path", [])
             original_excel_file = None
             
-            for original_file_entry in original_files_with_timestamps:
-                original_file_path = original_file_entry["path"]
-                if Path(original_file_path).stem == table_file_stem:
-                    original_excel_file = Path(original_file_path)
-                    break
+            # Look for original Excel file in temp folder by exact name match
+            temp_dir = Path("temp")
+            if temp_dir.exists():
+                # Search for original Excel file with same stem but different extensions
+                for potential_file in temp_dir.glob(f"{table_file_stem}.*"):
+                    if potential_file.suffix.lower() in {'.xlsx', '.xls', '.xlsm'}:
+                        original_excel_file = potential_file
+                        print(f"🔍 在temp文件夹找到原始Excel文件: {original_excel_file.name}")
+                        break
+            
+            # Fallback: check original_files_path from state (legacy)
+            if not original_excel_file:
+                original_files_with_timestamps = state.get("original_files_path", [])
+                for original_file_entry in original_files_with_timestamps:
+                    original_file_path = original_file_entry["path"]
+                    if Path(original_file_path).stem == table_file_stem:
+                        original_excel_file = Path(original_file_path)
+                        print(f"🔍 在state中找到原始Excel文件: {original_excel_file.name}")
+                        break
             
             headers = []
             analysis_response = ""
@@ -606,7 +633,6 @@ class FileProcessAgent:
             if original_excel_file:
                 # Check if this is a replacement operation
                 replacement_info = state.get("replacement_info", {})
-                original_file_key = None
                 replacement_mode = False
                 old_file_path = ""
                 
@@ -620,9 +646,7 @@ class FileProcessAgent:
                 
                 new_file_path = self.save_original_file_to_uploads(
                     str(original_excel_file), 
-                    chinese_table_name, 
-                    replacement_mode=replacement_mode, 
-                    old_file_path=old_file_path
+                    chinese_table_name
                 )
             
             # Generate table description for embedding
@@ -674,7 +698,7 @@ class FileProcessAgent:
             calculator = TableSimilarityCalculator()
             
             # Find best matching tables
-            results = calculator.get_best_matches(table_description, top_n=10)
+            results = calculator.get_best_matches(table_description, top_n=5)
             
             if results['success']:
                 print(f"✅ 相似度计算完成: {chinese_table_name}")
@@ -751,7 +775,7 @@ class FileProcessAgent:
         
     def _process_irrelevant(self, state: FileProcessState) -> FileProcessState:
         """This node will process the irrelevant files, it will delete the irrelevant files (both processed and original) from the staging area"""
-        return
+    
         print("\n🔍 开始执行: _process_irrelevant")
         print("=" * 50)
         
@@ -790,7 +814,7 @@ class FileProcessAgent:
     
     def _summary_file_upload(self, state: FileProcessState) -> FileProcessState:
         """Summary node for file upload process"""
-        return
+        
         
         print("\n🔍 开始执行: _summary_file_upload")
         print("=" * 50)
