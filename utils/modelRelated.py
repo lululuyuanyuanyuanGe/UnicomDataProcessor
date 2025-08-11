@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any, TypedDict, Annotated
+from typing import List, Any
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 import os
@@ -8,6 +8,7 @@ from pathlib import Path
 import base64
 from openai import RateLimitError
 import requests
+import pandas as pd
 
 from utils.screen_shot import ExcelTableScreenshot
 
@@ -266,39 +267,23 @@ def invoke_model_with_tools(model_name : str, messages : List[BaseMessage], tool
         raise
 
 
-def invoke_model_with_screenshot(model_name : str, file_path : str, temperature: float = 0.2) -> Any:
+def invoke_model4extract_excel_headers(model_name : str, file_path : str, temperature: float = 0.2) -> Any:
     """调用大模型并使用截图 with automatic rate limit retry"""
     print(f"🚀 开始调用LLM(带截图): {model_name} (temperature={temperature})")
 
     path = Path(file_path)
-    screen_shot_path = path.with_suffix(".png")
-
     file_name = path.name
+    csv_file_path = path.with_suffix(".csv")
 
-    excelTableScreenshot = ExcelTableScreenshot()
-    excelTableScreenshot.take_screenshot(file_path, screen_shot_path)
-
-    with open(screen_shot_path, "rb") as image_file:
-        image_data = image_file.read()
-        image_base64 = base64.b64encode(image_data).decode("utf-8")
-
-    human_message = HumanMessage(content=[
-    {
-        "type": "text",
-        "text": "请识别图片中的文字"
-    },
-    {
-        "type": "image_url",
-        "image_url": {
-            "url": f"data:image/png;base64,{image_base64}"
-        }
-    }
-    ])
+    df = pd.read_csv(csv_file_path, nrows = 10)
+    print(df)
+    table_preview = df.to_markdown(index=False)
+    human_message = HumanMessage(content=table_preview)
 
     system_message = SystemMessage(content=f"""
 你是一位专业的表格结构分析专家，擅长从复杂的 Excel 或 HTML 表格中提取完整的多级表头结构，并结合数据内容辅助理解字段含义、层级和分类汇总关系。
 
-请根据用户提供的表格，完成以下任务：
+请根据用户提供的根据表格转换的CSV内容，完成以下任务：
 
 【任务目标】
 

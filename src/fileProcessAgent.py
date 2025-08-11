@@ -15,7 +15,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import shutil
-from utils.modelRelated import invoke_model_with_screenshot
+from utils.modelRelated import invoke_model4extract_excel_headers
 from utils.file_process import (    delete_files_from_staging_area,
                                     detect_and_process_file_paths,
                                     analyze_single_file)
@@ -586,8 +586,8 @@ class FileProcessAgent:
                     print(f"🔍 找到原始Excel文件: {original_excel_file}")
                     # Use screenshot-based analysis to extract headers and table name
                     print("📤 正在调用LLM提取表格信息...")
-                    analysis_response = invoke_model_with_screenshot(
-                        model_name="Qwen/Qwen2.5-VL-72B-Instruct", 
+                    analysis_response = invoke_model4extract_excel_headers(
+                        model_name="deepseek-ai/DeepSeek-V3", 
                         file_path=str(original_excel_file)
                     )
                     print("📥 表格信息提取响应接收成功")
