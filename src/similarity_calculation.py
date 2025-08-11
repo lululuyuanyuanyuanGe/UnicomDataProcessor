@@ -1,9 +1,8 @@
 import sys
-import os
 import pickle
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Optional, Any
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Add project root to path for imports

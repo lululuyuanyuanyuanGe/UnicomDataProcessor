@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-from typing import Dict, Any, TypedDict
+from typing import Dict, TypedDict
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
@@ -33,11 +33,6 @@ import re
 
 from langgraph.graph import StateGraph, END, START
 from langgraph.types import Send
-# from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, SystemMessage
-from langchain_core.tools import tool
 
 
 class FileProcessState(TypedDict):
@@ -62,8 +57,7 @@ class FileProcessAgent:
     def __init__(self):
         # Thread lock for safe JSON file updates
         self._json_lock = threading.Lock()
-        self.memory = MemorySaver()
-        self.graph = self._build_graph().compile(checkpointer=self.memory)
+        self.graph = self._build_graph().compile()
 
     def _build_graph(self):
         graph = StateGraph(FileProcessState)

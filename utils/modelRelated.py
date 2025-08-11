@@ -10,9 +10,6 @@ from openai import RateLimitError
 import requests
 import pandas as pd
 
-from utils.screen_shot import ExcelTableScreenshot
-
-
 def _handle_rate_limit_with_backoff(func, max_retries: int = 6, base_delay: float = 1.0, max_delay: float = 60.0, silent_mode: bool = False):
     """
     Handle rate limit errors with exponential backoff retry logic.
