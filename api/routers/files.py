@@ -3,7 +3,7 @@ from typing import List
 import logging
 from pathlib import Path
 
-from api.models import FileProcessRequest, FileProcessResponse
+from api.models import FileProcessRequest, FileProcessWithIDsRequest, FileProcessResponse
 from api.services.file_service import file_service
 
 logger = logging.getLogger(__name__)
@@ -148,9 +148,12 @@ async def process_files(
                 # For now, fail the entire request if any file is invalid
                 raise
         
+        # Convert validated paths to files_data format (for backward compatibility, use dummy file IDs)
+        files_data = {path: f"api_file_{i}" for i, path in enumerate(validated_paths)}
+        
         # Process files through the service
         result = await file_service.process_files(
-            file_paths=validated_paths,
+            files_data=files_data,
             village_name=request.village_name or ""
         )
         
@@ -165,6 +168,85 @@ async def process_files(
         raise
     except Exception as e:
         logger.error(f"Unexpected error in file processing: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error during file processing: {str(e)}"
+        )
+
+
+@router.post("/process-files-with-ids", response_model=FileProcessResponse)
+async def process_files_with_ids(
+    request: FileProcessWithIDsRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Process files using direct file paths with custom file IDs (Docker volume mount approach).
+    
+    This endpoint:
+    1. Receives a mapping of file paths to file IDs
+    2. Validates that paths are within allowed directories (Docker volume mounts)
+    3. Processes them through the existing FileProcessAgent workflow with file IDs preserved
+    4. Returns processing results including table data and similarity scores
+    
+    Args:
+        request: FileProcessWithIDsRequest containing:
+            - files_data: Dict mapping file paths to file IDs
+            - village_name: Optional village name for file organization
+            
+    Returns:
+        FileProcessResponse with processing results, table information, and summary
+        
+    Note:
+        Files must be accessible within Docker container via volume mounts.
+        Allowed base paths: /data, /uploads, /shared, /mnt/data
+    """
+    
+    # Validate input
+    if not request.files_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file paths provided for processing"
+        )
+    
+    if len(request.files_data) > 50:  # Reasonable limit
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Too many files. Maximum 50 files allowed per request."
+        )
+    
+    try:
+        logger.info(f"Received file processing request with IDs: {len(request.files_data)} files, village_name='{request.village_name}'")
+        
+        # Validate all file paths
+        validated_files_data = {}
+        for file_path, file_id in request.files_data.items():
+            try:
+                validated_path = validate_file_path(file_path)
+                validated_files_data[validated_path] = file_id
+                logger.info(f"Validated file path: {file_path} -> {validated_path} (ID: {file_id})")
+            except HTTPException as e:
+                logger.error(f"File validation failed for {file_path}: {e.detail}")
+                # Continue with other files or fail completely?
+                # For now, fail the entire request if any file is invalid
+                raise
+        
+        # Process files through the service
+        result = await file_service.process_files(
+            files_data=validated_files_data,
+            village_name=request.village_name or ""
+        )
+        
+        # Schedule cleanup of old sessions in the background
+        background_tasks.add_task(file_service.cleanup_old_sessions)
+        
+        logger.info(f"File processing with IDs completed for session: {result.session_id}")
+        return result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in file processing with IDs: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error during file processing: {str(e)}"

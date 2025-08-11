@@ -22,6 +22,24 @@ class FileProcessRequest(BaseModel):
         }
 
 
+class FileProcessWithIDsRequest(BaseModel):
+    """Request model for file processing endpoint with file IDs"""
+    files_data: Dict[str, str] = Field(..., description="Mapping of file paths to file IDs")
+    village_name: Optional[str] = Field(default="", description="Village name (optional)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "files_data": {
+                    "/data/燕云村残疾人名单.xlsx": "file_001",
+                    "/data/村民信息表.csv": "file_002",
+                    "/uploads/财务报表.xlsx": "file_003"
+                },
+                "village_name": "燕云村"
+            }
+        }
+
+
 class DatabaseVectorizationRequest(BaseModel):
     """Request model for database vectorization endpoint"""
     force_refresh: Optional[bool] = Field(default=False, description="Force refresh all embeddings")

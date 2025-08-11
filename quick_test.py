@@ -15,7 +15,7 @@ FILE_PATHS_TO_PROCESS = [
     # "/temp/燕云村残疾人名单.xlsx",
     # "/temp/村民信息表.csv",
     # "/temp/财务数据.xlsx"
-    "/data/燕云村2024年度党员名册.xlsx"
+    "/data/七田村2025年度党员名册2025.xls"
 ]
 
 VILLAGE_NAME = "测试村"  # Change this to your village name
@@ -50,15 +50,16 @@ def quick_process_files():
     
     # Process files
     request_data = {
-        "file_paths": FILE_PATHS_TO_PROCESS,
+        "files_data": {"/data/七田村2025年度党员名册2025.xls": "123456"},
         "village_name": VILLAGE_NAME
     }
+
+
     
     print("\n🔄 Processing files...")
     try:
         response = requests.post(
-            "http://localhost:8000/api/process-files",
-            json=request_data,
+            "http://localhost:8000/api/revectorize-database",
             timeout=300  # 5 minutes
         )
         

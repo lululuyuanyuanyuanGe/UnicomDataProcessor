@@ -1,5 +1,5 @@
 .git
-.venv
+.venv/
 __pycache__/
 *.pyc
 .env
@@ -12,3 +12,4 @@ uploaded_files/
 embedded_tables/
 node_modules/
 .DS_Store
+.claude/

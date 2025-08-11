@@ -131,7 +131,7 @@ class DatabaseManager:
     
     def load_data_json(self) -> Dict:
         """Load existing data.json file"""
-        data_json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agents", "data.json")
+        data_json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "data.json")
         try:
             with open(data_json_path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -144,7 +144,7 @@ class DatabaseManager:
     
     def save_data_json(self, data: Dict):
         """Save data to data.json file"""
-        data_json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agents", "data.json")
+        data_json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "data.json")
         try:
             with open(data_json_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

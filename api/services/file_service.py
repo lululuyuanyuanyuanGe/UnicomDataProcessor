@@ -25,14 +25,14 @@ class FileProcessingService:
     
     async def process_files(
         self,
-        file_paths: List[str],
+        files_data: Dict[str, str],
         village_name: Optional[str] = ""
     ) -> FileProcessResponse:
         """
         Process files using direct file paths (Docker volume mount approach)
         
         Args:
-            file_paths: List of validated file paths that exist on the filesystem
+            files_data: Dict mapping file paths to file IDs {file_path: file_id}
             village_name: Optional village name parameter
             
         Returns:
@@ -42,6 +42,7 @@ class FileProcessingService:
         
         try:
             logger.info(f"Starting file processing session: {session_id}")
+            file_paths = list(files_data.keys())
             logger.info(f"Processing {len(file_paths)} files: {[Path(p).name for p in file_paths]}")
             
             # Update session status
@@ -53,15 +54,15 @@ class FileProcessingService:
             }
             
             # Validate all files exist (should already be validated, but double-check)
-            validated_paths = []
-            for file_path in file_paths:
+            validated_files_data = {}
+            for file_path, file_id in files_data.items():
                 path = Path(file_path)
                 if not path.exists():
                     logger.error(f"File not found during processing: {file_path}")
                     continue
-                validated_paths.append(str(path.resolve()))
+                validated_files_data[str(path.resolve())] = file_id
             
-            if not validated_paths:
+            if not validated_files_data:
                 raise ValueError("No valid files found for processing")
             
             # Process files using existing FileProcessAgent directly
@@ -70,12 +71,12 @@ class FileProcessingService:
                 None,
                 self._run_file_processing,
                 session_id,
-                validated_paths,
+                validated_files_data,
                 village_name or ""
             )
             
             # Parse and format results
-            response = self._format_response(session_id, result, file_paths, validated_paths)
+            response = self._format_response(session_id, result, file_paths, list(validated_files_data.keys()))
             
             # Update session status
             self.active_sessions[session_id]["status"] = "completed"
@@ -106,26 +107,26 @@ class FileProcessingService:
                 summary={"error": str(e)}
             )
     
-    def _run_file_processing(self, session_id: str, file_paths: List[str], village_name: str) -> Dict:
+    def _run_file_processing(self, session_id: str, files_data: Dict[str, str], village_name: str) -> Dict:
         """
         Run the file processing agent synchronously with direct file paths
         
         Args:
             session_id: Processing session ID
-            file_paths: List of validated file paths to process
+            files_data: Dict mapping file paths to file IDs
             village_name: Village name parameter
             
         Returns:
             Processing result dictionary
         """
         try:
-            logger.info(f"FileProcessAgent processing {len(file_paths)} files")
+            logger.info(f"FileProcessAgent processing {len(files_data)} files")
             
-            # Use the existing FileProcessAgent directly with file paths
-            # The FileProcessAgent expects a list of file paths, not file contents
+            # Use the existing FileProcessAgent directly with files data
+            # The FileProcessAgent expects a dict mapping file paths to file IDs
             result = self.agent.run_file_process_agent(
                 session_id=session_id,
-                upload_files_path=file_paths,  # Direct file paths
+                upload_files_data=files_data,  # Direct file paths mapped to file IDs
                 village_name=village_name
             )
             

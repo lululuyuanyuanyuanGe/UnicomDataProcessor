@@ -37,15 +37,15 @@ from langgraph.types import Send
 
 class FileProcessState(TypedDict):
     session_id: str
-    upload_files_path: list[dict] # Store all uploaded files with timestamps: [{"path": "file_path", "timestamp": "iso_timestamp"}]
-    new_upload_files_path: list[dict] # Track the new uploaded files in this round with timestamps
-    new_upload_files_processed_path: list[dict] # Store the processed new uploaded files with timestamps
+    upload_files_path: list[dict] # Store all uploaded files with timestamps: [{"path": "file_path", "timestamp": "iso_timestamp", "file_id": "unique_id"}]
+    new_upload_files_path: list[dict] # Track the new uploaded files in this round with timestamps and file_id
+    new_upload_files_processed_path: list[dict] # Store the processed new uploaded files with timestamps and file_id
     original_files_path: list[dict] # Store the original files in original_file subfolder with timestamps
-    table_files_path: list[dict]  # Store table files with timestamps
+    table_files_path: list[dict]  # Store table files with timestamps and file_id
     table_headers2embed: list[str]  # Change from str to list[str] to handle multiple tables
     table_header_embeddings: list[float]
     processed_table_results: list[dict]  # Store results from concurrent per-file processing
-    irrelevant_files_path: list[dict]  # Store irrelevant files with timestamps
+    irrelevant_files_path: list[dict]  # Store irrelevant files with timestamps and file_id
     irrelevant_original_files_path: list[dict] # Track original files to be deleted with irrelevant files with timestamps
     all_files_irrelevant: bool  # Flag to indicate all files are irrelevant
     replacement_info: dict  # Store info about files being replaced: {file_path: (clean_name, old_file_path)}
@@ -78,12 +78,13 @@ class FileProcessAgent:
 
         return graph
 
-    def _create_initial_state(self, session_id: str = "1", upload_files_path: list[str] = [], village_name: str = "") -> FileProcessState:
+    def _create_initial_state(self, session_id: str = "1", upload_files_data: dict[str, str] = {}, village_name: str = "") -> FileProcessState:
         # Convert input file paths to dictionary format with timestamps
+        # upload_files_data format: {file_path: file_id}
         current_timestamp = datetime.now().isoformat()
         upload_files_with_timestamps = [
-            {"path": file_path, "timestamp": current_timestamp} 
-            for file_path in upload_files_path
+            {"path": file_path, "timestamp": current_timestamp, "file_id": file_id} 
+            for file_path, file_id in upload_files_data.items()
         ]
         
         return {
@@ -157,12 +158,25 @@ class FileProcessAgent:
                 except Exception as e:
                     print(f"❌ 并发处理文件时发生错误 {file_path}: {e}")
         
-        # Create processed files with timestamps  
+        # Create processed files with timestamps and preserve file_id
         current_timestamp = datetime.now().isoformat()
-        processed_files_with_timestamps = [
-            {"path": file_path, "timestamp": current_timestamp}
-            for file_path in processed_files
-        ]
+        processed_files_with_timestamps = []
+        for file_path in processed_files:
+            # Find the corresponding file_id from the original uploaded files
+            file_id = None
+            for uploaded_file_entry in uploaded_files_path:
+                # Match by filename stem since processed files may have different extensions
+                uploaded_file_stem = Path(uploaded_file_entry["path"]).stem
+                processed_file_stem = Path(file_path).stem
+                if uploaded_file_stem == processed_file_stem:
+                    file_id = uploaded_file_entry.get("file_id")
+                    break
+            
+            processed_files_with_timestamps.append({
+                "path": file_path,
+                "timestamp": current_timestamp,
+                "file_id": file_id
+            })
         
         print(f"🎉 文件上传处理完成:")
         print(f"  - 输入文件数: {len(file_paths)}")
@@ -247,17 +261,20 @@ class FileProcessAgent:
                 try:
                     file_path_result, classification_type, file_name = future.result()
                     
-                    # Find the corresponding timestamp for this file
+                    # Find the corresponding timestamp and file_id for this file
                     file_timestamp = None
+                    file_id = None
                     for file_entry in new_files_with_timestamps:
                         if file_entry["path"] == file_path:
                             file_timestamp = file_entry["timestamp"]
+                            file_id = file_entry.get("file_id")
                             break
                     
-                    # Create file entry with timestamp
+                    # Create file entry with timestamp and file_id
                     file_entry_with_timestamp = {
                         "path": file_path_result,
-                        "timestamp": file_timestamp or datetime.now().isoformat()
+                        "timestamp": file_timestamp or datetime.now().isoformat(),
+                        "file_id": file_id
                     }
                     
                     # Add to appropriate category
@@ -270,15 +287,18 @@ class FileProcessAgent:
                     
                 except Exception as e:
                     print(f"❌ 并行处理文件任务失败 {file_path}: {e}")
-                    # Find timestamp and add to irrelevant on error
+                    # Find timestamp and file_id and add to irrelevant on error
                     file_timestamp = None
+                    file_id = None
                     for file_entry in new_files_with_timestamps:
                         if file_entry["path"] == file_path:
                             file_timestamp = file_entry["timestamp"]
+                            file_id = file_entry.get("file_id")
                             break
                     classification_results["irrelevant"].append({
                         "path": file_path,
-                        "timestamp": file_timestamp or datetime.now().isoformat()
+                        "timestamp": file_timestamp or datetime.now().isoformat(),
+                        "file_id": file_id
                     })
         
         print(f"🎉 并行文件分析完成:")
@@ -520,19 +540,26 @@ class FileProcessAgent:
             # Load existing data
             data = self.load_uploaded_files_json()
             
-            # Check if table already exists and log replacement
-            if chinese_table_name in data:
-                print(f"🔄 替换现有表格数据: {chinese_table_name}")
-            else:
-                print(f"📊 添加新表格数据: {chinese_table_name}")
+            # Find the index of the existing table entry
+            # Priority: First try to find entry without file_id, then any matching entry
+            index = None
+            for i, item in enumerate(data):
+                if item.get("excel_name") == chinese_table_name:
+                    # If we find an entry without file_id, prefer to replace that one
+                    if item.get("file_id") is None:
+                        index = i
+                        break
+                    # If we haven't found a better match yet, use this one
+                    elif index is None:
+                        index = i
             
-            # get the index of the chines_table_name table
-            index = next((i for i, item in enumerate(data) if item.get("excel_name") == chinese_table_name), None)
-
-            if index:
-                # Update with new table data
+            if index is not None:
+                # Update existing table data
+                print(f"🔄 替换现有表格数据: {chinese_table_name} (索引: {index})")
                 data[index] = table_data
             else:
+                # Add new table data
+                print(f"📊 添加新表格数据: {chinese_table_name}")
                 data.append(table_data)
             
             # Save back to file
@@ -547,6 +574,7 @@ class FileProcessAgent:
         """Process one table file (header extraction and file management)"""
         file_path = file_entry["path"]
         file_timestamp = file_entry["timestamp"]
+        file_id = file_entry.get("file_id")
         
         try:
             source_path = Path(file_path)
@@ -656,6 +684,7 @@ class FileProcessAgent:
             return {
                 "file_path": file_path,
                 "timestamp": file_timestamp,
+                "file_id": file_id,
                 "chinese_table_name": chinese_table_name,
                 "headers": headers,
                 "original_file_path": new_file_path,
@@ -669,6 +698,7 @@ class FileProcessAgent:
             return {
                 "file_path": file_path,
                 "timestamp": file_entry.get("timestamp", ""),
+                "file_id": file_entry.get("file_id"),
                 "chinese_table_name": f"处理失败_{Path(file_path).stem}",
                 "headers": [],
                 "original_file_path": "",
@@ -729,7 +759,6 @@ class FileProcessAgent:
         """Complete pipeline for one table file: process → similarity → save"""
         try:
             print(f"\n🚀 开始处理表格管道: {Path(file_entry['path']).name}")
-            
             # Step 1: Process table file (header extraction)
             table_data = self.process_single_table_file(file_entry, state)
             
@@ -745,8 +774,9 @@ class FileProcessAgent:
             
             # Prepare data structure for JSON
             json_entry = {
-                "exceL_name": chinese_table_name,
+                "excel_name": chinese_table_name,
                 "timestamp": complete_data["timestamp"],
+                "file_id": complete_data.get("file_id"),
                 "headers": complete_data["headers"],
                 "original_file_path": complete_data["original_file_path"],
                 "table_description": complete_data["table_description"],
@@ -764,6 +794,7 @@ class FileProcessAgent:
             return {
                 "file_path": file_entry.get("path", ""),
                 "timestamp": file_entry.get("timestamp", ""),
+                "file_id": file_entry.get("file_id"),
                 "chinese_table_name": f"管道失败_{datetime.now().strftime('%H%M%S')}",
                 "headers": [],
                 "original_file_path": "",
@@ -875,12 +906,12 @@ class FileProcessAgent:
         
         return {**state}
 
-    def run_file_process_agent(self, session_id: str = "1", upload_files_path: list[str] = [], village_name: str = "ChatBI") -> FileProcessState:
+    def run_file_process_agent(self, session_id: str = "1", upload_files_data: dict[str, str] = {}, village_name: str = "ChatBI") -> FileProcessState:
         """Driver to run the process file agent"""
         print("\n🚀 开始运行 FileProcessAgent")
         print("=" * 60)
 
-        initial_state = self._create_initial_state(session_id = session_id, upload_files_path = upload_files_path, village_name = village_name)
+        initial_state = self._create_initial_state(session_id = session_id, upload_files_data = upload_files_data, village_name = village_name)
         config = {"configurable": {"thread_id": session_id}}
 
         print(f"📋 会话ID: {session_id}")
@@ -907,6 +938,8 @@ class FileProcessAgent:
             return initial_state
 if __name__ == "__main__":
     upload_files_path = input("请输入上传文件路径: ")
-    upload_files_path = detect_and_process_file_paths(upload_files_path)
+    upload_files_path_list = detect_and_process_file_paths(upload_files_path)
+    # Convert list to dict format with dummy file_ids for CLI usage
+    upload_files_data = {path: f"file_{i}" for i, path in enumerate(upload_files_path_list)}
     agent = FileProcessAgent()
-    agent.run_file_process_agent(upload_files_path = upload_files_path)
+    agent.run_file_process_agent(upload_files_data = upload_files_data)
