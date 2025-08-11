@@ -19,6 +19,7 @@ from utils.modelRelated import invoke_model4extract_excel_headers
 from utils.file_process import (    delete_files_from_staging_area,
                                     detect_and_process_file_paths,
                                     analyze_single_file)
+from utils.process_links import download_and_rename_from_dict
 from src.similarity_calculation import TableSimilarityCalculator
 from utils.table_processing_helpers import (
     extract_headers_from_response, 
@@ -910,8 +911,8 @@ class FileProcessAgent:
         """Driver to run the process file agent"""
         print("\n🚀 开始运行 FileProcessAgent")
         print("=" * 60)
-
-        initial_state = self._create_initial_state(session_id = session_id, upload_files_data = upload_files_data, village_name = village_name)
+        renamed_files = download_and_rename_from_dict(upload_files_data)
+        initial_state = self._create_initial_state(session_id = session_id, upload_files_data = renamed_files, village_name = village_name)
         config = {"configurable": {"thread_id": session_id}}
 
         print(f"📋 会话ID: {session_id}")
@@ -937,9 +938,9 @@ class FileProcessAgent:
             print(f"❌ 执行过程中发生错误: {e}")
             return initial_state
 if __name__ == "__main__":
-    upload_files_path = input("请输入上传文件路径: ")
-    upload_files_path_list = detect_and_process_file_paths(upload_files_path)
-    # Convert list to dict format with dummy file_ids for CLI usage
-    upload_files_data = {path: f"file_{i}" for i, path in enumerate(upload_files_path_list)}
+    # upload_files_path = input("请输入上传文件路径: ")
+    # upload_files_path_list = detect_and_process_file_paths(upload_files_path)
+    # # Convert list to dict format with dummy file_ids for CLI usage
+    # upload_files_data = {path: f"file_{i}" for i, path in enumerate(upload_files_path_list)}
     agent = FileProcessAgent()
-    agent.run_file_process_agent(upload_files_data = upload_files_data)
+    agent.run_file_process_agent(upload_files_data = {"http://58.144.196.118:5019/ai-index/atts/images/QA_20250805124450569_党员信息.xlsx": "file_001"})
