@@ -463,10 +463,10 @@ class FileProcessAgent:
                     with open(uploaded_files_json_path, 'r', encoding='utf-8') as f:
                         return json.load(f)
                 else:
-                    return {}
+                    return []
             except (json.JSONDecodeError, FileNotFoundError) as e:
                 print(f"⚠️ 读取uploaded_files.json失败: {e}，创建新的数据结构")
-                return {}
+                return []
 
     def save_uploaded_files_json(self, data: Dict):
         """Save data to uploaded_files.json file with thread safety"""
@@ -526,8 +526,14 @@ class FileProcessAgent:
             else:
                 print(f"📊 添加新表格数据: {chinese_table_name}")
             
-            # Update with new table data
-            data[chinese_table_name] = table_data
+            # get the index of the chines_table_name table
+            index = next((i for i, item in enumerate(data) if item.get("excel_name") == chinese_table_name), None)
+
+            if index:
+                # Update with new table data
+                data[index] = table_data
+            else:
+                data.append(table_data)
             
             # Save back to file
             self.save_uploaded_files_json(data)
@@ -739,6 +745,7 @@ class FileProcessAgent:
             
             # Prepare data structure for JSON
             json_entry = {
+                "exceL_name": chinese_table_name,
                 "timestamp": complete_data["timestamp"],
                 "headers": complete_data["headers"],
                 "original_file_path": complete_data["original_file_path"],

@@ -1,10 +1,9 @@
 from fastapi import APIRouter, HTTPException, status, BackgroundTasks
-from typing import List, Optional
+from typing import List
 import logging
 from pathlib import Path
-import os
 
-from api.models import FileProcessRequest, FileProcessResponse, ProcessingStatus, ErrorResponse
+from api.models import FileProcessRequest, FileProcessResponse
 from api.services.file_service import file_service
 
 logger = logging.getLogger(__name__)
