@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   fileprocessor-api:
-    image: luluyuanyuanyuan/fileprocessor-api:1.0.1
+    image: luluyuanyuanyuan/fileprocessor-api:1.1.0
     build: .
     ports:
       - "8000:8000"
