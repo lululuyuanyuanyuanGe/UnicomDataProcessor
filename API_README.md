@@ -1,95 +1,82 @@
-# Asian Information Data Processor API
+# 亚洲信息数据处理器 API
 
-A FastAPI-based REST API for processing Asian information data files using direct file path access via Docker volume mounts.
+基于 FastAPI 的 REST API，用于通过 Docker 卷挂载直接访问文件路径来处理亚洲信息数据文件。
 
-## Features
+## 功能特性
 
-- **Direct File Path Processing**: Access files directly from server filesystem via Docker volumes
-- **Database Vectorization**: Generate embeddings for database tables for similarity matching
-- **Automatic Classification**: Classify files as tables, documents, or irrelevant content
-- **Similarity Matching**: Find similar tables using vector embeddings
-- **Docker Volume Mounts**: Secure file access through configured volume mounts
-- **High Performance**: No file transfer overhead, direct filesystem access
+- **直接文件路径处理**：通过 Docker 卷直接从服务器文件系统访问文件
+- **数据库向量化**：为数据库表生成嵌入向量用于相似性匹配
+- **自动分类**：将文件分类为表格、文档或无关内容
+- **相似性匹配**：使用向量嵌入查找相似表格
+- **文件 ID 支持**：支持带自定义文件 ID 的文件处理
 
-## API Endpoints
+## 核心 API 接口
 
-### File Processing
+### 文件处理
 
 #### `POST /api/process-files`
-Process files using direct file paths (Docker volume mount approach).
+使用文件路径列表处理文件（向后兼容）
 
-**Request Body:**
+**请求体：**
 ```json
 {
   "file_paths": [
-    "/data/燕云村残疾人名单.xlsx",
-    "/data/村民信息表.csv",
-    "/uploads/财务报表.xlsx"
+    "/data/七田村党员名册.xlsx",
+    "/data/村民信息表.csv"
   ],
-  "village_name": "燕云村"
+  "village_name": "七田村"
 }
 ```
 
-**Response:**
+#### `POST /api/process-files-with-ids`
+使用文件路径和自定义文件 ID 处理文件（推荐）
+
+**请求体：**
 ```json
 {
-  "session_id": "20250108_123456_abc123",
+  "files_data": {
+    "/data/七田村党员名册.xlsx": "file_001",
+    "/data/村民信息表.csv": "file_002"
+  },
+  "village_name": "七田村"
+}
+```
+
+**响应示例：**
+```json
+{
+  "session_id": "20250811_123456_abc123",
   "status": {
     "status": "completed",
-    "message": "Successfully processed 3 files",
+    "message": "成功处理 2 个文件",
     "progress": 100
   },
-  "input_files": ["/data/file1.xlsx", "/data/file2.csv", "/data/readme.txt"],
-  "processed_files": ["/data/file1.xlsx", "/data/file2.csv"],
   "table_files": [{
-    "chinese_table_name": "燕云村残疾人名单",
-    "headers": ["姓名", "年龄", "残疾类型"],
+    "chinese_table_name": "七田村党员名册",
+    "headers": ["姓名", "性别", "年龄"],
     "header_count": 3,
     "similarity_scores": []
   }],
-  "irrelevant_files": ["/data/readme.txt"],
   "summary": {
-    "total_files": 3,
-    "tables_found": 2,
+    "total_files": 2,
+    "tables_found": 1,
     "irrelevant_files": 1
   }
 }
 ```
 
 #### `GET /api/process-files/status/{session_id}`
-Get the processing status of a session.
+获取处理会话状态
 
 #### `GET /api/validate-paths`
-Validate file paths without processing them.
+验证文件路径（不实际处理文件）
 
-**Query Parameters:**
-- `file_paths`: List of file paths to validate
-
-**Response:**
-```json
-{
-  "validation_results": [
-    {
-      "path": "/data/test.xlsx",
-      "valid": true,
-      "resolved_path": "/data/test.xlsx",
-      "file_size": 1024,
-      "error": null
-    }
-  ],
-  "total_files": 1,
-  "valid_files": 1,
-  "invalid_files": 0,
-  "allowed_base_paths": ["/data", "/uploads", "/shared"]
-}
-```
-
-### Database Vectorization
+### 数据库向量化
 
 #### `POST /api/revectorize-database`
-Trigger database re-vectorization using mysqlConnector.
+触发数据库重新向量化
 
-**Request Body:**
+**请求体：**
 ```json
 {
   "force_refresh": false,
@@ -97,261 +84,145 @@ Trigger database re-vectorization using mysqlConnector.
 }
 ```
 
-**Response:**
-```json
-{
-  "status": {
-    "status": "completed",
-    "message": "Successfully vectorized 15 database tables",
-    "progress": 100
-  },
-  "total_tables": 15,
-  "processed_tables": ["用户表", "产品表"],
-  "embedding_info": {
-    "model": "Qwen/Qwen3-Embedding-8B",
-    "embedding_dimension": 1024,
-    "total_embeddings": 15
-  }
-}
-```
-
-#### `GET /api/database-info`
-Get information about the current database structure and embeddings.
-
-#### `GET /api/database-tables`
-List all database tables that can be vectorized.
-
-### Health Check
+### 健康检查
 
 #### `GET /api/health`
-Health check endpoint for monitoring.
+API 健康状态检查
 
-## Quick Start
+## 环境配置
 
-### Docker Deployment (Recommended)
+### 必需的环境变量
 
-1. **Configure environment variables:**
+在项目根目录创建 `.env` 文件，配置以下变量：
+
+```bash
+# 数据库配置（必需）
+CHAT_BI_ADDR=your_mysql_host          # MySQL 主机地址
+CHAT_BI_PORT=3306                     # MySQL 端口（可选，默认 3306）
+CHAT_BI_USER=your_db_user            # MySQL 用户名
+CHAT_BI_PASSWORD=your_db_password    # MySQL 密码
+CHAT_BI_DB=your_database_name        # 数据库名称
+
+# AI 模型服务配置（必需）
+SILICONFLOW_API_KEY=your_api_key     # SiliconFlow API 密钥
+
+# Docker 卷挂载路径（Docker 部署时需要）
+HOST_FILES_PATH=D:\asianInfo\data     # 主数据目录路径
+```
+
+### 环境变量说明
+
+| 变量名 | 描述 | 必需 | 默认值 |
+|--------|------|------|--------|
+| `CHAT_BI_ADDR` | MySQL 数据库主机地址 | 是 | - |
+| `CHAT_BI_PORT` | MySQL 数据库端口 | 否 | 3306 |
+| `CHAT_BI_USER` | MySQL 数据库用户名 | 是 | - |
+| `CHAT_BI_PASSWORD` | MySQL 数据库密码 | 是 | - |
+| `CHAT_BI_DB` | MySQL 数据库名称 | 是 | - |
+| `SILICONFLOW_API_KEY` | AI 模型服务 API 密钥 | 是 | - |
+| `HOST_FILES_PATH` | 主数据目录（Docker 用） | Docker 部署时需要 | - |
+
+## 快速开始
+
+### Docker 部署（推荐）
+
+1. **配置环境变量：**
    ```bash
    cp .env.example .env
-   # Edit .env with your database credentials and volume mount paths
+   # 编辑 .env 文件设置你的配置
    ```
 
-   **Key Configuration:**
-   ```bash
-   # Database
-   CHAT_BI_ADDR=your_mysql_host
-   CHAT_BI_USER=your_db_user
-   CHAT_BI_PASSWORD=your_db_password
-   
-   # Volume Mounts - IMPORTANT: Set these to your actual data paths
-   HOST_DATA_PATH=D:\asianInfo\ExcelAssist      # Your main data directory
-   HOST_UPLOADS_PATH=D:\uploads                  # User uploads directory
-   HOST_SHARED_PATH=D:\shared                    # Shared files directory
-   ```
-
-2. **Deploy with Docker Compose:**
+2. **启动服务：**
    ```bash
    docker-compose up -d
    ```
 
-3. **Verify deployment:**
+3. **验证部署：**
    ```bash
    curl http://localhost:8000/api/health
    ```
 
-4. **View API documentation:**
+4. **查看 API 文档：**
    - Swagger UI: http://localhost:8000/docs
    - ReDoc: http://localhost:8000/redoc
 
-### Manual Docker Build
+### 本地开发
 
-1. **Build the image:**
-   ```bash
-   docker build -t dataprocessor-api .
-   ```
-
-2. **Run with volume mounts:**
-   ```bash
-   docker run -p 8000:8000 \
-     -e CHAT_BI_ADDR=your_db_host \
-     -e CHAT_BI_USER=your_db_user \
-     -e CHAT_BI_PASSWORD=your_db_password \
-     -e CHAT_BI_DB=your_db_name \
-     -e SILICONFLOW_API_KEY=your_api_key \
-     -v /host/data:/data \
-     -v /host/uploads:/uploads \
-     -v /host/shared:/shared \
-     -v ./uploaded_files:/app/uploaded_files \
-     -v ./embedded_tables:/app/embedded_tables \
-     dataprocessor-api
-   ```
-
-### Local Development
-
-1. **Install dependencies:**
+1. **安装依赖：**
    ```bash
    uv sync
    ```
 
-2. **Set up environment variables:**
+2. **配置环境变量：**
    ```bash
    cp .env.example .env
-   # Edit .env with your configuration
+   # 编辑 .env 文件
    ```
 
-3. **Create test directories:**
-   ```bash
-   mkdir -p /app/data /app/uploads /app/shared
-   # Or adjust ALLOWED_BASE_PATHS in api/routers/files.py for local paths
-   ```
-
-4. **Start the API server:**
+3. **启动 API 服务器：**
    ```bash
    python run_api.py
    ```
 
-## Environment Variables
+## 支持的文件格式
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `CHAT_BI_ADDR` | MySQL database host | Yes |
-| `CHAT_BI_PORT` | MySQL database port | No (default: 3306) |
-| `CHAT_BI_USER` | MySQL database username | Yes |
-| `CHAT_BI_PASSWORD` | MySQL database password | Yes |
-| `CHAT_BI_DB` | MySQL database name | Yes |
-| `SILICONFLOW_API_KEY` | API key for LLM services | Yes |
+- **电子表格**：.xlsx, .xls, .xlsm, .ods, .csv
+- **文档**：.docx, .doc, .pptx, .ppt
+- **文本文件**：.txt, .md, .json, .xml, .html
+- **其他格式**：基础文件信息提取
 
-## File Support
+## 使用示例
 
-The API supports processing the following file types:
-
-- **Spreadsheets**: .xlsx, .xls, .xlsm, .ods, .csv
-- **Documents**: .docx, .doc, .pptx, .ppt
-- **Text files**: .txt, .md, .json, .xml, .html, .py, .js, .css, .sql
-- **Images**: .jpg, .jpeg, .png, .gif, .bmp, .tiff (metadata extraction)
-- **Other formats**: Basic file information extraction
-
-## API Usage Examples
-
-### Python Example
+### Python 示例
 
 ```python
-import aiohttp
-import asyncio
-import json
+import requests
 
-async def process_files():
-    async with aiohttp.ClientSession() as session:
-        # Process files using direct file paths
-        request_data = {
-            "file_paths": [
-                "/data/燕云村残疾人名单.xlsx",
-                "/data/村民信息表.csv"
-            ],
-            "village_name": "测试村"
-        }
-        
-        async with session.post(
-            'http://localhost:8000/api/process-files',
-            json=request_data,
-            headers={'Content-Type': 'application/json'}
-        ) as response:
-            result = await response.json()
-            print(f"Session ID: {result['session_id']}")
-            print(f"Status: {result['status']['status']}")
-            print(f"Tables found: {len(result['table_files'])}")
+# 使用文件 ID 处理文件（推荐）
+response = requests.post('http://localhost:8000/api/process-files-with-ids', 
+    json={
+        "files_data": {
+            "/data/党员名册.xlsx": "file_001",
+            "/data/村民信息.csv": "file_002"
+        },
+        "village_name": "测试村"
+    }
+)
 
-async def validate_paths():
-    async with aiohttp.ClientSession() as session:
-        # Validate file paths before processing
-        paths_to_check = ["/data/test.xlsx", "/uploads/data.csv"]
-        
-        async with session.get(
-            f'http://localhost:8000/api/validate-paths',
-            params={'file_paths': paths_to_check}
-        ) as response:
-            result = await response.json()
-            print(f"Valid files: {result['valid_files']}/{result['total_files']}")
-
-asyncio.run(process_files())
+result = response.json()
+print(f"处理状态: {result['status']['status']}")
+print(f"找到表格: {len(result['table_files'])} 个")
 ```
 
-### cURL Examples
+### cURL 示例
 
 ```bash
-# Process files with direct paths
-curl -X POST "http://localhost:8000/api/process-files" \
+# 处理带文件 ID 的文件
+curl -X POST "http://localhost:8000/api/process-files-with-ids" \
      -H "Content-Type: application/json" \
      -d '{
-       "file_paths": ["/data/test.xlsx", "/uploads/data.csv"],
+       "files_data": {
+         "/data/test.xlsx": "file_001",
+         "/uploads/data.csv": "file_002"
+       },
        "village_name": "测试村"
      }'
 
-# Validate file paths
-curl -X GET "http://localhost:8000/api/validate-paths" \
-     -G -d "file_paths=/data/test.xlsx" -d "file_paths=/uploads/data.csv"
-
-# Vectorize database
-curl -X POST "http://localhost:8000/api/revectorize-database" \
-     -H "Content-Type: application/json" \
-     -d '{"force_refresh": false}'
-
-# Health check
+# 健康检查
 curl http://localhost:8000/api/health
 ```
 
-### JavaScript/Node.js Example
+## 数据存储
 
-```javascript
-const axios = require('axios');
+处理后的文件数据存储在：
+- **原始文件**：`uploaded_files/` 目录
+- **处理结果**：`src/uploaded_files.json`（包含文件 ID、表头、相似度匹配等信息）
 
-async function processFiles() {
-    try {
-        const response = await axios.post('http://localhost:8000/api/process-files', {
-            file_paths: [
-                '/data/燕云村残疾人名单.xlsx',
-                '/data/村民信息表.csv'
-            ],
-            village_name: '测试村'
-        });
-        
-        console.log('Processing completed:', response.data);
-        console.log('Tables found:', response.data.table_files.length);
-    } catch (error) {
-        console.error('Error:', error.response?.data || error.message);
-    }
-}
+## 故障排除
 
-processFiles();
-```
+1. **数据库连接失败**：检查环境变量和网络连通性
+2. **文件处理失败**：验证文件格式和大小限制
+3. **API 超时**：增加大文件处理的超时值
+4. **权限问题**：确保 Docker 卷挂载路径有正确权限
 
-## Architecture
-
-- **FastAPI**: Modern web framework with automatic API documentation
-- **Uvicorn**: ASGI server for production deployment
-- **Pydantic**: Data validation and serialization
-- **Async Processing**: Non-blocking file processing and database operations
-- **Docker**: Containerized deployment ready for Linux servers
-
-## Monitoring
-
-- Health check endpoint at `/api/health`
-- Structured logging for debugging and monitoring
-- Request/response validation with detailed error messages
-- Progress tracking for long-running operations
-
-## Security Considerations
-
-- File size limits (50MB per file, max 20 files per request)
-- Input validation for all parameters
-- Error handling without exposing internal details
-- CORS configuration for web clients
-
-## Troubleshooting
-
-1. **Database connection issues**: Check environment variables and network connectivity
-2. **File processing failures**: Verify file formats and sizes
-3. **Memory issues**: Limit concurrent processing or increase container resources
-4. **API timeout**: Increase timeout values for large file processing
-
-For more details, see the auto-generated API documentation at `/docs` when running the server.
+更多详细信息请查看运行时的自动生成 API 文档：`/docs`

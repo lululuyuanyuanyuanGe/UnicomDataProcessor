@@ -21,11 +21,11 @@ services:
     volumes:
       - ${HOST_FILES_PATH}:/data                 # Main data directory
 
-      # Code volume mounts for development
-      - ./api:/app/api                    # Mount your API code
-      - ./src:/app/src                    # Mount your src code  
-      - ./utils:/app/utils                # Mount utilities
-      - ./config.py:/app/config.py        # Mount config file
+      # # Code volume mounts for development
+      # - ./api:/app/api                    # Mount your API code
+      # - ./src:/app/src                    # Mount your src code  
+      # - ./utils:/app/utils                # Mount utilities
+      # - ./config.py:/app/config.py        # Mount config file
 
 
       # Application persistence (keep these)
