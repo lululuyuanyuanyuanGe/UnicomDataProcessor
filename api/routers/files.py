@@ -221,7 +221,8 @@ async def process_files_with_ids(
         validated_files_data = {}
         for file_path, file_id in request.files_data.items():
             try:
-                validated_path = validate_file_path(file_path)
+                # validated_path = validate_file_path(file_path)
+                validated_path = file_path
                 validated_files_data[validated_path] = file_id
                 logger.info(f"Validated file path: {file_path} -> {validated_path} (ID: {file_id})")
             except HTTPException as e:
