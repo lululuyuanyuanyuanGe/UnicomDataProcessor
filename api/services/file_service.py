@@ -54,16 +54,7 @@ class FileProcessingService:
             }
             
             # Validate all files exist (should already be validated, but double-check)
-            validated_files_data = {}
-            for file_path, file_id in files_data.items():
-                path = Path(file_path)
-                if not path.exists():
-                    logger.error(f"File not found during processing: {file_path}")
-                    continue
-                validated_files_data[str(path.resolve())] = file_id
-            
-            if not validated_files_data:
-                raise ValueError("No valid files found for processing")
+            validated_files_data = files_data
             
             # Process files using existing FileProcessAgent directly
             logger.info("Invoking FileProcessAgent with direct file paths...")
