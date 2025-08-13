@@ -17,8 +17,7 @@ import threading
 import shutil
 from utils.modelRelated import invoke_model4extract_excel_headers
 from utils.file_process import (    delete_files_from_staging_area,
-                                    detect_and_process_file_paths,
-                                    analyze_single_file)
+                                    detect_and_process_file_paths)
 from utils.process_links import download_and_rename_from_dict
 from src.similarity_calculation import TableSimilarityCalculator
 from utils.table_processing_helpers import (
@@ -46,9 +45,6 @@ class FileProcessState(TypedDict):
     table_headers2embed: list[str]  # Change from str to list[str] to handle multiple tables
     table_header_embeddings: list[float]
     processed_table_results: list[dict]  # Store results from concurrent per-file processing
-    irrelevant_files_path: list[dict]  # Store irrelevant files with timestamps and file_id
-    irrelevant_original_files_path: list[dict] # Track original files to be deleted with irrelevant files with timestamps
-    all_files_irrelevant: bool  # Flag to indicate all files are irrelevant
     replacement_info: dict  # Store info about files being replaced: {file_path: (clean_name, old_file_path)}
     village_name: str
 
@@ -64,17 +60,12 @@ class FileProcessAgent:
         graph = StateGraph(FileProcessState)
 
         graph.add_node("file_upload", self._file_upload)
-        graph.add_node("analyze_uploaded_files", self._analyze_uploaded_files)
-        graph.add_node("route_after_analyze_uploaded_files", self._route_after_analyze_uploaded_files)
-        graph.add_node("process_table_and_similarity", self._process_table_and_similarity)  # New combined concurrent node
-        graph.add_node("process_irrelevant", self._process_irrelevant)
+        graph.add_node("process_table_and_similarity", self._process_table_and_similarity)
         graph.add_node("summary_file_upload", self._summary_file_upload)
 
         graph.add_edge(START, "file_upload")
-        graph.add_edge("file_upload", "analyze_uploaded_files")
-        graph.add_conditional_edges("analyze_uploaded_files", self._route_after_analyze_uploaded_files)
-        graph.add_edge("process_table_and_similarity", "summary_file_upload")  # Direct to summary
-        graph.add_edge("process_irrelevant", "summary_file_upload")
+        graph.add_edge("file_upload", "process_table_and_similarity")
+        graph.add_edge("process_table_and_similarity", "summary_file_upload")
         graph.add_edge("summary_file_upload", END)
 
         return graph
@@ -99,9 +90,6 @@ class FileProcessAgent:
             "table_headers2embed": [],  # Changed from str to list[str]
             "table_header_embeddings": [],
             "processed_table_results": [],  # New field for concurrent processing results
-            "irrelevant_files_path": [],
-            "irrelevant_original_files_path": [],
-            "all_files_irrelevant": False,
             "replacement_info": {},  # Store replacement information
             "template_complexity": "",
             "village_name": village_name
@@ -122,7 +110,8 @@ class FileProcessAgent:
             print("=" * 50)
             return {
                 "new_upload_files_path": [],
-                "new_upload_files_processed_path": []
+                "new_upload_files_processed_path": [],
+                "table_files_path": []
             }
         
         # Extract file paths from the dictionary structure
@@ -188,7 +177,8 @@ class FileProcessAgent:
 
         return {
             "new_upload_files_path": uploaded_files_path,  # Keep original input files 
-            "new_upload_files_processed_path": processed_files_with_timestamps  # LLM-ready processed files
+            "new_upload_files_processed_path": processed_files_with_timestamps,  # LLM-ready processed files
+            "table_files_path": processed_files_with_timestamps  # Treat all processed files as table files
         }
 
     def _process_single_file_for_llm(self, file_path: str) -> str | None:
@@ -209,189 +199,6 @@ class FileProcessAgent:
             return None
 
 
-    def _analyze_uploaded_files(self, state: FileProcessState) -> FileProcessState:
-        """This node will analyze the user's uploaded files, it need to classify the file into template
-        supplement, or irrelevant. If all files are irrelevant, it will flag for text analysis instead."""
-        
-        print("\n🔍 开始执行: _analyze_uploaded_files")
-        print("=" * 50)
-        
-        import json
-        from pathlib import Path
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        
-        # Initialize classification results
-        classification_results = {
-            "tables": [],
-            "irrelevant": []
-        }
-        
-        # Process files one by one for better accuracy
-        processed_files = []
-        # Safely handle the case where new_upload_files_processed_path might not exist in state
-        new_files_with_timestamps = state.get("new_upload_files_processed_path", [])
-        new_files_to_process = [file_entry["path"] for file_entry in new_files_with_timestamps]
-        
-        print(f"📁 需要分析的文件数量: {len(new_files_to_process)}")
-        
-        if not new_files_to_process:
-            print("⚠️ 没有找到可处理的文件")
-            print("✅ _analyze_uploaded_files 执行完成")
-            print("=" * 50)
-            return {
-                "table_files_path": [],
-                "irrelevant_files_path": [],
-                "all_files_irrelevant": True  # Flag for routing to text analysis
-            }
-        
-        
-        # Use ThreadPoolExecutor for parallel processing
-        max_workers = min(len(new_files_to_process), 5)  # Limit to 5 concurrent requests
-        print(f"🚀 开始并行处理文件，使用 {max_workers} 个工作线程")
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all file analysis tasks
-            future_to_file = {
-                executor.submit(analyze_single_file, file_path): file_path 
-                for file_path in new_files_to_process
-            }
-            
-            # Process completed tasks as they finish
-            for future in as_completed(future_to_file):
-                file_path = future_to_file[future]
-                try:
-                    file_path_result, classification_type, file_name = future.result()
-                    
-                    # Find the corresponding timestamp and file_id for this file
-                    file_timestamp = None
-                    file_id = None
-                    for file_entry in new_files_with_timestamps:
-                        if file_entry["path"] == file_path:
-                            file_timestamp = file_entry["timestamp"]
-                            file_id = file_entry.get("file_id")
-                            break
-                    
-                    # Create file entry with timestamp and file_id
-                    file_entry_with_timestamp = {
-                        "path": file_path_result,
-                        "timestamp": file_timestamp or datetime.now().isoformat(),
-                        "file_id": file_id
-                    }
-                    
-                    # Add to appropriate category
-                    if classification_type == "table":
-                        classification_results["tables"].append(file_entry_with_timestamp)
-                    else:  # irrelevant or unknown
-                        classification_results["irrelevant"].append(file_entry_with_timestamp)
-                    
-                    processed_files.append(file_name)
-                    
-                except Exception as e:
-                    print(f"❌ 并行处理文件任务失败 {file_path}: {e}")
-                    # Find timestamp and file_id and add to irrelevant on error
-                    file_timestamp = None
-                    file_id = None
-                    for file_entry in new_files_with_timestamps:
-                        if file_entry["path"] == file_path:
-                            file_timestamp = file_entry["timestamp"]
-                            file_id = file_entry.get("file_id")
-                            break
-                    classification_results["irrelevant"].append({
-                        "path": file_path,
-                        "timestamp": file_timestamp or datetime.now().isoformat(),
-                        "file_id": file_id
-                    })
-        
-        print(f"🎉 并行文件分析完成:")
-        print(f"  - 表格文件: {len(classification_results['tables'])} 个")
-        print(f"  - 无关文件: {len(classification_results['irrelevant'])} 个")
-        print(f"  - 成功处理: {len(processed_files)} 个文件")
-        
-        if not processed_files and not classification_results["irrelevant"]:
-            print("⚠️ 没有找到可处理的文件")
-            print("✅ _analyze_uploaded_files 执行完成")
-            print("=" * 50)
-            return {
-                "table_files_path": [],
-                "irrelevant_files_path": [],
-                "all_files_irrelevant": True  # Flag for routing to text analysis
-            }
-        
-        # Update state with classification results
-        table_files = classification_results.get("tables", [])
-        irrelevant_files = classification_results.get("irrelevant", [])
-        
-        # Create mapping of processed files to original files to track irrelevant originals
-        irrelevant_original_files = []
-        if irrelevant_files:
-            original_files_with_timestamps = state.get("original_files_path", [])
-            processed_files_with_timestamps = state.get("new_upload_files_processed_path", [])
-            
-            print("🔍 正在映射无关文件对应的原始文件...")
-            
-            # Create mapping based on filename (stem)
-            for irrelevant_file_entry in irrelevant_files:
-                irrelevant_file_path = irrelevant_file_entry["path"]
-                irrelevant_file_stem = Path(irrelevant_file_path).stem
-                # Find the corresponding original file
-                for original_file_entry in original_files_with_timestamps:
-                    original_file_path = original_file_entry["path"]
-                    original_file_stem = Path(original_file_path).stem
-                    if irrelevant_file_stem == original_file_stem:
-                        irrelevant_original_files.append(original_file_entry)
-                        print(f"📋 映射无关文件: {Path(irrelevant_file_path).name} -> {Path(original_file_path).name}")
-                        break
-        
-        # Check if all files are irrelevant
-        # Safely handle the case where new_upload_files_processed_path might not exist in state
-        new_files_processed_count = len(state.get("new_upload_files_processed_path", []))
-        all_files_irrelevant = len(irrelevant_files) == new_files_processed_count
-        
-        if all_files_irrelevant:
-            print("⚠️ 所有文件都被分类为无关文件")
-            print("✅ _analyze_uploaded_files 执行完成")
-            print("=" * 50)
-            return {
-                "table_files_path": [],
-                "irrelevant_files_path": irrelevant_files,
-                "irrelevant_original_files_path": irrelevant_original_files,
-                "all_files_irrelevant": True  # Flag for routing
-            }
-        else:
-            # Some files are relevant, proceed with normal flow
-            print("✅ 文件分析完成，存在有效文件")
-            print(f"  - 表格文件: {len(table_files)} 个")
-            print(f"  - 无关文件: {len(irrelevant_files)} 个")
-            print("✅ _analyze_uploaded_files 执行完成")
-            print("=" * 50)
-            
-            return {
-                "table_files_path": table_files,
-                "irrelevant_files_path": irrelevant_files,
-                "irrelevant_original_files_path": irrelevant_original_files,
-                "all_files_irrelevant": False  # Flag for routing
-            }
-                
-    def _route_after_analyze_uploaded_files(self, state: FileProcessState):
-        """Route after analyzing uploaded files. Uses Send objects for all routing."""
-        print("Debug: route_after_analyze_uploaded_files")
-        
-        # Check if all files are irrelevant - route to cleanup
-        if state.get("all_files_irrelevant", False):
-            sends = []
-            if state.get("irrelevant_files_path"):
-                sends.append(Send("process_irrelevant", state))
-            return sends if sends else [Send("summary_file_upload", state)]
-        
-        # Some files are relevant - process them in parallel
-        sends = []
-        if state.get("table_files_path"):
-            sends.append(Send("process_table_and_similarity", state))  # Updated to new combined node
-        if state.get("irrelevant_files_path"):
-            sends.append(Send("process_irrelevant", state))
-
-        # The parallel nodes will automatically converge, then continue to summary
-        return sends if sends else [Send("summary_file_upload", state)]  # Fallback
     
     def _process_table_and_similarity(self, state: FileProcessState) -> FileProcessState:
         """Process all table files concurrently, each going through full pipeline"""
@@ -805,45 +612,6 @@ class FileProcessAgent:
                 "success": False
             }
 
-        
-    def _process_irrelevant(self, state: FileProcessState) -> FileProcessState:
-        """This node will process the irrelevant files, it will delete the irrelevant files (both processed and original) from the staging area"""
-    
-        print("\n🔍 开始执行: _process_irrelevant")
-        print("=" * 50)
-        
-        irrelevant_files_with_timestamps = state["irrelevant_files_path"]
-        irrelevant_original_files_with_timestamps = state.get("irrelevant_original_files_path", [])
-        
-        # Extract file paths from dictionary structure
-        irrelevant_files = [file_entry["path"] for file_entry in irrelevant_files_with_timestamps]
-        irrelevant_original_files = [file_entry["path"] for file_entry in irrelevant_original_files_with_timestamps]
-        
-        print(f"🗑️ 需要删除的无关处理文件数量: {len(irrelevant_files)}")
-        print(f"🗑️ 需要删除的无关原始文件数量: {len(irrelevant_original_files)}")
-        
-        # Combine all files to delete
-        all_files_to_delete = irrelevant_files + irrelevant_original_files
-        
-        if all_files_to_delete:
-            delete_result = delete_files_from_staging_area(all_files_to_delete)
-            
-            deleted_count = len(delete_result["deleted_files"])
-            failed_count = len(delete_result["failed_deletes"])
-            
-            print(f"📊 删除结果: 成功 {deleted_count} 个，失败 {failed_count} 个 (总计 {len(all_files_to_delete)} 个文件)")
-            
-            if delete_result["failed_deletes"]:
-                print("❌ 删除失败的文件:")
-                for failed_file in delete_result["failed_deletes"]:
-                    print(f"  - {failed_file}")
-        else:
-            print("⚠️ 没有无关文件需要删除")
-        
-        print("✅ _process_irrelevant 执行完成")
-        print("=" * 50)
-        
-        return {}  # Return empty dict since this node doesn't need to update any state keys
     
     def _summary_file_upload(self, state: FileProcessState) -> FileProcessState:
         """Summary node for file upload process"""
@@ -857,7 +625,6 @@ class FileProcessAgent:
         print(f"  - 上传文件总数: {len(state.get('upload_files_path', []))}")
         print(f"  - 新上传文件数: {len(state.get('new_upload_files_path', []))}")
         print(f"  - 表格文件数: {len(state.get('table_files_path', []))}")
-        print(f"  - 无关文件数: {len(state.get('irrelevant_files_path', []))}")
         
         # Show concurrent processing results
         processed_results = state.get('processed_table_results', [])
@@ -930,7 +697,6 @@ class FileProcessAgent:
             print(f"- 新上传文件已处理数量: {len(final_state.get('new_upload_files_processed_path', []))}")
             print(f"- 原始文件数量: {len(final_state.get('original_files_path', []))}")
             print(f"- 表格文件数量: {len(final_state.get('table_files_path', []))}")
-            print(f"- 无关文件数量: {len(final_state.get('irrelevant_files_path', []))}")
 
             return final_state
         
