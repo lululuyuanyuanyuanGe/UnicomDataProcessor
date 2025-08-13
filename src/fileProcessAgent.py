@@ -283,7 +283,9 @@ class FileProcessAgent:
     
     def load_uploaded_files_json(self) -> Dict:
         """Load existing uploaded_files.json file with thread safety"""
-        uploaded_files_json_path = Path("src/uploaded_files.json")
+        # Use absolute path to ensure we find the file regardless of working directory
+        project_root = Path(__file__).resolve().parent.parent
+        uploaded_files_json_path = project_root / "src" / "uploaded_files.json"
         
         with self._json_lock:
             try:
@@ -298,7 +300,9 @@ class FileProcessAgent:
 
     def save_uploaded_files_json(self, data: Dict):
         """Save data to uploaded_files.json file with thread safety"""
-        uploaded_files_json_path = Path("src/uploaded_files.json")
+        # Use absolute path to ensure we find the file regardless of working directory
+        project_root = Path(__file__).resolve().parent.parent
+        uploaded_files_json_path = project_root / "src" / "uploaded_files.json"
         
         with self._json_lock:
             try:

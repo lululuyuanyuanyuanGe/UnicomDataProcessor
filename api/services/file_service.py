@@ -300,10 +300,22 @@ class FileProcessingService:
             UploadedFilesResponse with the contents of uploaded_files.json
         """
         try:
-            uploaded_files_path = project_root / "src" / "uploaded_files.json"
+            # Try multiple possible paths for uploaded_files.json
+            possible_paths = [
+                project_root / "src" / "uploaded_files.json",  # Original path
+                Path("src/uploaded_files.json").resolve(),     # Relative to current working directory
+                Path(__file__).resolve().parent.parent.parent / "src" / "uploaded_files.json"  # Absolute from this file
+            ]
             
-            if not uploaded_files_path.exists():
-                logger.warning("uploaded_files.json not found")
+            uploaded_files_path = None
+            for path in possible_paths:
+                if path.exists():
+                    uploaded_files_path = path
+                    logger.info(f"Found uploaded_files.json at: {path}")
+                    break
+            
+            if uploaded_files_path is None:
+                logger.warning(f"uploaded_files.json not found in any of these paths: {[str(p) for p in possible_paths]}")
                 return UploadedFilesResponse(files=[], total_files=0)
             
             with open(uploaded_files_path, 'r', encoding='utf-8') as f:

@@ -1,5 +1,3 @@
-version: '1.0'
-
 services:
   fileprocessor-api:
     image: luluyuanyuanyuan/fileprocessor-api:1.1.1

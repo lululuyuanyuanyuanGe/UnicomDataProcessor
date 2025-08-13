@@ -7,16 +7,6 @@ Edit the file_paths list below with your actual file paths
 import requests
 import json
 
-# 🔧 EDIT THESE PATHS TO YOUR ACTUAL FILES
-# These paths should exist in your HOST_FILES_PATH directory
-# In the API calls, use /temp/* because that's where your host files are mounted
-FILE_PATHS_TO_PROCESS = [
-    # Add your actual file paths here, for example:
-    # "/temp/燕云村残疾人名单.xlsx",
-    # "/temp/村民信息表.csv",
-    # "/temp/财务数据.xlsx"
-    "/data/七田村2025年度党员名册2025.xls"
-]
 
 VILLAGE_NAME = "测试村"  # Change this to your village name
 
@@ -25,16 +15,6 @@ def quick_process_files():
     print("🚀 Quick File Processing Test")
     print("=" * 40)
     
-    if not FILE_PATHS_TO_PROCESS:
-        print("❌ No files to process!")
-        print("   Please edit this script and add your file paths to FILE_PATHS_TO_PROCESS")
-        print("   Use paths like: '/temp/your_file.xlsx'")
-        return
-    
-    print(f"📁 Files to process: {len(FILE_PATHS_TO_PROCESS)}")
-    for path in FILE_PATHS_TO_PROCESS:
-        print(f"   - {path}")
-    print(f"🏘️  Village: {VILLAGE_NAME}")
     
     # Test API connection
     try:
@@ -50,7 +30,7 @@ def quick_process_files():
     
     # Process files
     request_data = {
-        "files_data": {"/data/七田村2025年度党员名册2025.xls": "123456"},
+        "files_data": {"http://58.144.196.118:5019/ai-index/atts/images/QA_20250805152449915_党员信息.xlsx": "QA_20250805152449915_党员信息"},
         "village_name": VILLAGE_NAME
     }
 
@@ -59,8 +39,9 @@ def quick_process_files():
     print("\n🔄 Processing files...")
     try:
         response = requests.post(
-            "http://localhost:8000/api/revectorize-database",
-            timeout=300  # 5 minutes
+            "http://localhost:8000/api/process-files-with-ids",
+            timeout=300,  # 5 minutes
+            json=request_data
         )
         
         if response.status_code == 200:
