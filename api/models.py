@@ -160,6 +160,73 @@ class HealthCheckResponse(BaseModel):
         }
 
 
+class SimilarityMatch(BaseModel):
+    """Similarity match information"""
+    index: int
+    table_name: str
+    description: str
+    similarity_percentage: float
+    similarity_formatted: str
+
+
+class SimilarityResult(BaseModel):
+    """Complete similarity result with top matches and best match"""
+    top_matches: List[SimilarityMatch] = Field(default_factory=list)
+    best_match: Optional[SimilarityMatch] = None
+
+
+class UploadedFileInfo(BaseModel):
+    """Individual uploaded file information matching uploaded_files.json structure"""
+    excel_name: str
+    timestamp: str
+    file_id: Optional[str] = None
+    headers: List[str]
+    original_file_path: str
+    table_description: str
+    similarity_match: SimilarityResult
+
+
+class UploadedFilesResponse(BaseModel):
+    """Response model returning uploaded_files.json contents"""
+    files: List[UploadedFileInfo] = Field(description="List of uploaded file information")
+    total_files: int = Field(description="Total number of files")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "files": [
+                    {
+                        "excel_name": "党员信息",
+                        "timestamp": "2025-08-13T14:13:00.996033",
+                        "file_id": "file_001",
+                        "headers": ["姓名", "性别", "民族", "学历"],
+                        "original_file_path": "uploaded_files\\党员信息.xlsx",
+                        "table_description": "党员信息 包含表头：姓名,性别,民族,学历",
+                        "similarity_match": {
+                            "top_matches": [
+                                {
+                                    "index": 2,
+                                    "table_name": "党员信息表",
+                                    "description": "党员信息表，包含各村数据",
+                                    "similarity_percentage": 94.04,
+                                    "similarity_formatted": "94.0%"
+                                }
+                            ],
+                            "best_match": {
+                                "index": 2,
+                                "table_name": "党员信息表",
+                                "description": "党员信息表，包含各村数据",
+                                "similarity_percentage": 94.04,
+                                "similarity_formatted": "94.0%"
+                            }
+                        }
+                    }
+                ],
+                "total_files": 1
+            }
+        }
+
+
 class ErrorResponse(BaseModel):
     """Error response model"""
     error: str = Field(description="Error type")

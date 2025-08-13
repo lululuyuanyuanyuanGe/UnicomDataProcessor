@@ -11,7 +11,8 @@ project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root))
 
 from src.fileProcessAgent import FileProcessAgent
-from api.models import FileProcessResponse, ProcessingStatus, TableInfo
+from api.models import FileProcessResponse, ProcessingStatus, TableInfo, UploadedFilesResponse, UploadedFileInfo, SimilarityResult, SimilarityMatch
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,110 @@ class FileProcessingService:
         for session_id in expired_sessions:
             del self.active_sessions[session_id]
             logger.info(f"Cleaned up expired session: {session_id}")
+
+    async def process_files_and_return_uploaded_json(
+        self,
+        files_data: Dict[str, str],
+        village_name: Optional[str] = ""
+    ) -> UploadedFilesResponse:
+        """
+        Process files and return the contents of uploaded_files.json
+        
+        Args:
+            files_data: Dict mapping file paths to file IDs {file_path: file_id}
+            village_name: Optional village name parameter
+            
+        Returns:
+            UploadedFilesResponse with uploaded_files.json contents
+        """
+        try:
+            # First, process the files using the existing workflow
+            await self.process_files(files_data, village_name)
+            
+            # Now read and return the uploaded_files.json content
+            return self._read_uploaded_files_json()
+                
+        except Exception as e:
+            logger.error(f"Failed to process files and read uploaded_files.json: {e}", exc_info=True)
+            # Return empty response in case of error
+            return UploadedFilesResponse(files=[], total_files=0)
+
+    def _read_uploaded_files_json(self) -> UploadedFilesResponse:
+        """
+        Read uploaded_files.json and convert to UploadedFilesResponse format
+        
+        Returns:
+            UploadedFilesResponse with the contents of uploaded_files.json
+        """
+        try:
+            uploaded_files_path = project_root / "src" / "uploaded_files.json"
+            
+            if not uploaded_files_path.exists():
+                logger.warning("uploaded_files.json not found")
+                return UploadedFilesResponse(files=[], total_files=0)
+            
+            with open(uploaded_files_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Convert JSON data to UploadedFileInfo objects
+            uploaded_files = []
+            for item in data:
+                # Parse similarity matches
+                similarity_match = self._parse_similarity_match(item.get("similarity_match", {}))
+                
+                uploaded_file = UploadedFileInfo(
+                    excel_name=item.get("excel_name", ""),
+                    timestamp=item.get("timestamp", ""),
+                    file_id=item.get("file_id"),
+                    headers=item.get("headers", []),
+                    original_file_path=item.get("original_file_path", ""),
+                    table_description=item.get("table_description", ""),
+                    similarity_match=similarity_match
+                )
+                uploaded_files.append(uploaded_file)
+            
+            return UploadedFilesResponse(
+                files=uploaded_files,
+                total_files=len(uploaded_files)
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to read uploaded_files.json: {e}", exc_info=True)
+            return UploadedFilesResponse(files=[], total_files=0)
+
+    def _parse_similarity_match(self, similarity_data: Dict) -> SimilarityResult:
+        """Parse similarity match data from JSON to SimilarityResult"""
+        try:
+            top_matches = []
+            for match in similarity_data.get("top_matches", []):
+                similarity_match = SimilarityMatch(
+                    index=match.get("index", 0),
+                    table_name=match.get("table_name", ""),
+                    description=match.get("description", ""),
+                    similarity_percentage=match.get("similarity_percentage", 0.0),
+                    similarity_formatted=match.get("similarity_formatted", "0.0%")
+                )
+                top_matches.append(similarity_match)
+            
+            best_match = None
+            best_match_data = similarity_data.get("best_match")
+            if best_match_data:
+                best_match = SimilarityMatch(
+                    index=best_match_data.get("index", 0),
+                    table_name=best_match_data.get("table_name", ""),
+                    description=best_match_data.get("description", ""),
+                    similarity_percentage=best_match_data.get("similarity_percentage", 0.0),
+                    similarity_formatted=best_match_data.get("similarity_formatted", "0.0%")
+                )
+            
+            return SimilarityResult(
+                top_matches=top_matches,
+                best_match=best_match
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to parse similarity match: {e}")
+            return SimilarityResult(top_matches=[], best_match=None)
 
 
 # Global service instance

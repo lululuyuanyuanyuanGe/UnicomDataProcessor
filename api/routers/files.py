@@ -3,7 +3,7 @@ from typing import List
 import logging
 from pathlib import Path
 
-from api.models import FileProcessRequest, FileProcessWithIDsRequest, FileProcessResponse
+from api.models import FileProcessRequest, FileProcessWithIDsRequest, FileProcessResponse, UploadedFilesResponse
 from api.services.file_service import file_service
 
 logger = logging.getLogger(__name__)
@@ -174,19 +174,19 @@ async def process_files(
         )
 
 
-@router.post("/process-files-with-ids", response_model=FileProcessResponse)
+@router.post("/process-files-with-ids", response_model=UploadedFilesResponse)
 async def process_files_with_ids(
     request: FileProcessWithIDsRequest,
     background_tasks: BackgroundTasks
 ):
     """
-    Process files using direct file paths with custom file IDs (Docker volume mount approach).
+    Process files using direct file paths with custom file IDs and return uploaded_files.json contents.
     
     This endpoint:
     1. Receives a mapping of file paths to file IDs
     2. Validates that paths are within allowed directories (Docker volume mounts)
     3. Processes them through the existing FileProcessAgent workflow with file IDs preserved
-    4. Returns processing results including table data and similarity scores
+    4. Returns the contents of uploaded_files.json with detailed table data and similarity scores
     
     Args:
         request: FileProcessWithIDsRequest containing:
@@ -194,7 +194,7 @@ async def process_files_with_ids(
             - village_name: Optional village name for file organization
             
     Returns:
-        FileProcessResponse with processing results, table information, and summary
+        UploadedFilesResponse with uploaded_files.json contents including table information and similarity matches
         
     Note:
         Files must be accessible within Docker container via volume mounts.
@@ -231,8 +231,8 @@ async def process_files_with_ids(
                 # For now, fail the entire request if any file is invalid
                 raise
         
-        # Process files through the service
-        result = await file_service.process_files(
+        # Process files and return uploaded_files.json contents
+        result = await file_service.process_files_and_return_uploaded_json(
             files_data=validated_files_data,
             village_name=request.village_name or ""
         )
@@ -240,7 +240,7 @@ async def process_files_with_ids(
         # Schedule cleanup of old sessions in the background
         background_tasks.add_task(file_service.cleanup_old_sessions)
         
-        logger.info(f"File processing with IDs completed for session: {result.session_id}")
+        logger.info(f"File processing with IDs completed, returning {result.total_files} uploaded files")
         return result
         
     except HTTPException:
