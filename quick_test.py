@@ -46,29 +46,8 @@ def quick_process_files():
         
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ SUCCESS! Status: {data['status']['status']}")
-            print(f"📋 Results:")
-            print(f"   Session ID: {data['session_id']}")
-            print(f"   Input files: {len(data['input_files'])}")
-            print(f"   Successfully processed: {len(data['processed_files'])}")
-            print(f"   Tables found: {len(data['table_files'])}")
-            print(f"   Irrelevant files: {len(data['irrelevant_files'])}")
-            
-            # Show table details
-            if data['table_files']:
-                print("\n📊 Detected Tables:")
-                for i, table in enumerate(data['table_files'], 1):
-                    print(f"   {i}. {table['chinese_table_name']}")
-                    print(f"      Headers: {table['header_count']} columns")
-                    if table['headers']:
-                        print(f"      Columns: {', '.join(table['headers'][:5])}{'...' if len(table['headers']) > 5 else ''}")
-            
-            # Show irrelevant files
-            if data['irrelevant_files']:
-                print(f"\n🗑️  Irrelevant Files: {data['irrelevant_files']}")
-            
-            print(f"\n📊 Summary: {data['summary']}")
-            
+            data = json.dumps(data, indent=2)
+            print(data)
         else:
             print(f"❌ FAILED! Status: {response.status_code}")
             try:

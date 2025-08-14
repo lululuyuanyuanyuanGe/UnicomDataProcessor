@@ -1,6 +1,6 @@
 services:
   fileprocessor-api:
-    image: luluyuanyuanyuan/fileprocessor-api:1.1.1
+    image: fileprocessor-api:1.1.2
     build: .
     ports:
       - "8000:8000"
